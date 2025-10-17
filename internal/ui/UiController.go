@@ -1,6 +1,11 @@
 package ui
 
-import tea "github.com/charmbracelet/bubbletea"
+import (
+	"strconv"
+
+	"github.com/Mshel/sshnake/internal/game"
+	tea "github.com/charmbracelet/bubbletea"
+)
 
 type Screen int
 
@@ -11,16 +16,17 @@ const (
 
 type ControllerModel struct {
 	CurrentScreen Screen
-
-	SetupModel tea.Model
-	GameModel  tea.Model
+	GameManager   *game.GameManager
+	SetupModel    tea.Model
+	GameModel     tea.Model
 }
 
-func NewControllerModel() ControllerModel {
+func NewControllerModel(gameManager *game.GameManager) ControllerModel {
 	return ControllerModel{
+		GameManager:   gameManager,
 		CurrentScreen: SetupScreen,
-		SetupModel:    NewInitialSetupModel(),
-		GameModel:     NewGameModel(), // GameModel is initialized only upon submission
+		SetupModel:    NewInitialSetupModel(gameManager),
+		GameModel:     NewGameModel(gameManager), // GameModel is initialized only upon submission
 	}
 }
 
@@ -65,12 +71,20 @@ func (m ControllerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case SetupSubmitMsg:
 		// 2. Transition to the next screen
 		m.CurrentScreen = GameScreen
+		playerColor, conversionErr := strconv.Atoi(msg.Color)
+		if conversionErr != nil {
+			// no need to panic
+			panic(conversionErr)
+		}
 
-		// 3. (Optional) Initialize the new GameModel with the data
-		m.GameModel = NewGameModel()
+		newPlayer := game.CreateNewPlayer(msg.Name, playerColor)
+		m.GameManager.Players[playerColor] = newPlayer
+		m.GameManager.CurrentPlayerColor = playerColor
+		m.GameModel = NewGameModel(m.GameManager)
 
-		// The transition is done.
-		return m, nil
+		go m.GameManager.StartGameLoop()
+
+		return m, m.GameModel.Init()
 	}
 
 	// Pass messages down to the active child model

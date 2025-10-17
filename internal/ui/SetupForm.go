@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Mshel/sshnake/internal/game"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -54,7 +55,7 @@ type SetupModel struct {
 }
 
 // Initial state setup
-func NewInitialSetupModel() SetupModel {
+func NewInitialSetupModel(gameManager *game.GameManager) SetupModel {
 	ti := textinput.New()
 	ti.Placeholder = "Your Shhnake Name"
 	ti.Focus()
