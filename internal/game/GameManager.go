@@ -59,7 +59,7 @@ func (gm *GameManager) StartGameLoop() {
 	}
 	gm.IsRunning = true
 	log.Println("Game loop started.")
-	duration := 50 * time.Millisecond
+	duration := 100 * time.Millisecond
 
 	ticker := time.NewTicker(duration)
 	defer ticker.Stop()

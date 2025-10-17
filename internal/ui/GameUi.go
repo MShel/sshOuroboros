@@ -71,15 +71,12 @@ func (m GameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m GameModel) View() string {
 	var mapView strings.Builder
 
-	// 🚨 FIX 6: Display dynamic time and tick count for debugging
 	mapView.WriteString(time.Now().String() + fmt.Sprintf(" | Tick: %d\n", m.TickCount))
 
 	gameMap := m.gameManager.GameMap
 
-	// Render a manageable viewport (e.g., 40x40)
 	const viewportSize = 40
 
-	// Center viewport around player's location (assuming player is initialized)
 	player := m.gameManager.Players[m.gameManager.CurrentPlayerColor]
 
 	startRow, startCol := 0, 0
@@ -88,7 +85,6 @@ func (m GameModel) View() string {
 		startCol = player.Location.X - viewportSize/2
 	}
 
-	// Clamp viewport coordinates to map boundaries
 	if startRow < 0 {
 		startRow = 0
 	}
@@ -106,7 +102,6 @@ func (m GameModel) View() string {
 		endCol = game.MapColCount
 	}
 
-	// Ensure we don't try to access out of bounds
 	if endRow > game.MapRowCount {
 		endRow = game.MapRowCount
 	}
@@ -118,7 +113,6 @@ func (m GameModel) View() string {
 		for col := startCol; col < endCol; col++ {
 			currTile := gameMap[row][col]
 			if currTile.OwnerColor != nil {
-				// Render occupied tile
 				mapView.WriteString(
 					lipgloss.
 						NewStyle().
