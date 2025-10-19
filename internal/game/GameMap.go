@@ -22,20 +22,16 @@ func GetSpawnPoint() *Tile {
 
 var GameMap [][]*Tile
 
-// that will be covered under viewport so we dont worry about displaying the whole thing and can make it aribtrary large
-var MapColCount = 200
-var MapRowCount = 200
-
 func getInitGameMap() [][]*Tile {
 	if GameMap != nil {
 		return GameMap
 	}
 
-	GameMap = make([][]*Tile, mapRowCount)
+	GameMap = make([][]*Tile, MapRowCount)
 
-	for row := 0; row < mapRowCount; row++ {
-		GameMap[row] = make([]*Tile, mapColCount)
-		for col := 0; col < mapColCount; col++ {
+	for row := 0; row < MapRowCount; row++ {
+		GameMap[row] = make([]*Tile, MapColCount)
+		for col := 0; col < MapColCount; col++ {
 			GameMap[row][col] = CreateNewTile(row, col)
 		}
 	}

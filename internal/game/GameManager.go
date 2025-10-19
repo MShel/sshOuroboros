@@ -13,6 +13,9 @@ type Direction struct {
 }
 
 type GameTickMsg struct{}
+type PlayerDeadMsg struct {
+	PlayerColor int
+}
 
 type GameManager struct {
 	// map int for color and pointer to player(null if color is not allocated)
@@ -27,19 +30,17 @@ type GameManager struct {
 }
 
 var singletonGameManager *GameManager
-var mapColCount = 1024
-var mapRowCount = 768
+var MapColCount = 20
+var MapRowCount = 20
 
 func GetNewGameManager() *GameManager {
 	if singletonGameManager != nil {
 		return singletonGameManager
 	}
 
-	// 🚨 FIX 1: Correctly assign to the global singletonGameManager
 	singletonGameManager = &GameManager{
-		// 🚨 FIX 2: Initialize channels here (Important!)
 		DirectionChannel: make(chan Direction, 10),
-		UpdateChannel:    make(chan tea.Msg), // Use tea.Msg for compatibility
+		UpdateChannel:    make(chan tea.Msg),
 		IsRunning:        false,
 	}
 	singletonGameManager.Players = make(map[int]*Player)
@@ -96,33 +97,54 @@ func (gm *GameManager) processGameTick() {
 		}
 
 		nextTile := player.GetNextTile()
-		if nextTile == nil {
-			continue // Should not happen, but safe check
+		if gm.isWall(nextTile) {
+			gm.UpdateChannel <- PlayerDeadMsg{
+				*player.Color,
+			}
+			return
 		}
 
-		// 1. Collision Check (Crucial for Ssshnake)
-		if nextTile.OwnerColor != nil && nextTile.OwnerColor != player.Color {
-			//log.Printf("Player %s collided with color %d!", player.Name, nextTile.OwnerColor)
-			continue
-		}
-		if nextTile.OwnerColor == player.Color && !nextTile.IsTail {
-			//log.Printf("Player %s color %d owner color %d collided with itself!", player.Name, *player.Color, *nextTile.OwnerColor)
-			continue
+		if gm.isOtherPlayerTail(nextTile) {
+			gm.UpdateChannel <- PlayerDeadMsg{
+				*player.Color,
+			}
+			return
 		}
 
-		// 2. Move Player (Update Map and Player location)
-		//log.Printf("grubbed it %d, %d", nextTile.X, nextTile.Y)
+		if gm.isPlayersTail(nextTile, player.Color) {
+			//space fill algorithm
+			//that will swap isTail flags to False
+			//update player stats
+		}
 
-		// Mark the new tile as owned by the player
-		nextTile.OwnerColor = player.Color
-		nextTile.IsTail = false // New head is not the tail
+		if nextTile.OwnerColor != player.Color {
+			nextTile.OwnerColor = player.Color
+			nextTile.IsTail = true
+		}
 
 		// Update player's location
 		player.Location = nextTile
-
-		// 3. Trail Management (Simple logic for now: remove tail after a delay)
-		// 🚨 TODO: Implement robust tail management and ClaimedEstate update
 	}
 
-	// 🚨 TODO: Implement broadcasting the updated GameMap state to all players/UI
+	// TODO: Implement broadcasting the updated GameMap state to all players/UI
+}
+
+func (gm *GameManager) isWall(tile *Tile) bool {
+	if tile.X == 0 || tile.Y == 0 {
+		return true
+	}
+
+	if tile.X == MapColCount || tile.Y == MapRowCount {
+		return true
+	}
+
+	return false
+}
+
+func (gm *GameManager) isOtherPlayerTail(tile *Tile) bool {
+	return tile.IsTail && tile.OwnerColor != nil
+}
+
+func (gm *GameManager) isPlayersTail(tile *Tile, playerColor *int) bool {
+	return tile.IsTail && tile.OwnerColor == playerColor
 }

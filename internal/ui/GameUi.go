@@ -63,6 +63,8 @@ func (m GameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case game.GameTickMsg:
 		m.TickCount++
 		return m, m.listenForGameUpdates()
+	case game.PlayerDeadMsg:
+		return m, tea.Quit
 	}
 
 	return m, cmd
