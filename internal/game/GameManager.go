@@ -104,7 +104,7 @@ func (gm *GameManager) processGameTick() {
 			return
 		}
 
-		if gm.isOtherPlayerTail(nextTile) {
+		if gm.isOtherPlayerTail(nextTile, player.Color) {
 			gm.UpdateChannel <- PlayerDeadMsg{
 				*player.Color,
 			}
@@ -141,8 +141,8 @@ func (gm *GameManager) isWall(tile *Tile) bool {
 	return false
 }
 
-func (gm *GameManager) isOtherPlayerTail(tile *Tile) bool {
-	return tile.IsTail && tile.OwnerColor != nil
+func (gm *GameManager) isOtherPlayerTail(tile *Tile, playerColor *int) bool {
+	return tile.IsTail && tile.OwnerColor != nil && playerColor != tile.OwnerColor
 }
 
 func (gm *GameManager) isPlayersTail(tile *Tile, playerColor *int) bool {
