@@ -120,9 +120,9 @@ func (gm *GameManager) processGameTick() {
 		if nextTile.OwnerColor != player.Color {
 			nextTile.OwnerColor = player.Color
 			nextTile.IsTail = true
+			player.addTileToTail(nextTile)
 		}
 
-		player.addTileToTail(nextTile)
 		// Update player's location
 		player.Location = nextTile
 	}
@@ -152,7 +152,7 @@ func (gm *GameManager) spaceFill(player *Player) {
 		ignoreQ = ignoreQ[1:]
 
 		testTile := gm.GameMap[testCoord[0]][testCoord[1]]
-		//	testTile.OwnerColor = &derpColor
+		//testTile.OwnerColor = &derpColor
 		mapOfTilesToIgnore[testTile] = true
 
 		for _, dir := range directions {
@@ -170,7 +170,7 @@ func (gm *GameManager) spaceFill(player *Player) {
 				continue
 			}
 
-			if testTile.IsTail && testTile.OwnerColor == player.Color {
+			if testTile.OwnerColor == player.Color {
 				continue
 			}
 
