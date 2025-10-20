@@ -77,7 +77,7 @@ func (m GameModel) View() string {
 
 	gameMap := m.gameManager.GameMap
 
-	const viewportSize = 40
+	const viewportSize = 100
 
 	player := m.gameManager.Players[m.gameManager.CurrentPlayerColor]
 
@@ -114,12 +114,21 @@ func (m GameModel) View() string {
 	for row := startRow; row < endRow; row++ {
 		for col := startCol; col < endCol; col++ {
 			currTile := gameMap[row][col]
-			if currTile.OwnerColor != nil {
+
+			if currTile.OwnerColor != nil && (currTile.IsTail || player.Location == currTile) {
 				mapView.WriteString(
 					lipgloss.
 						NewStyle().
 						Width(1).
-						Foreground(lipgloss.Color(strconv.Itoa(*currTile.OwnerColor))).Render("█"))
+						Foreground(lipgloss.Color(strconv.Itoa(*currTile.OwnerColor))).Render("○"))
+				continue
+			}
+			if currTile.OwnerColor != nil && !currTile.IsTail {
+				mapView.WriteString(
+					lipgloss.
+						NewStyle().
+						Width(1).
+						Foreground(lipgloss.Color(strconv.Itoa(*currTile.OwnerColor))).Render("░"))
 				continue
 			}
 			// Render empty space (faint gray)
