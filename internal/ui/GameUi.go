@@ -131,8 +131,13 @@ func (m GameModel) View() string {
 						Foreground(lipgloss.Color(strconv.Itoa(*currTile.OwnerColor))).Render("░"))
 				continue
 			}
-			// Render empty space (faint gray)
-			mapView.WriteString(lipgloss.NewStyle().Width(1).Foreground(lipgloss.Color("235")).Render("░"))
+			fieldBackground := lipgloss.Color("235")
+			backgroundSymb := "░"
+			if row == 0 || col == 0 || row == game.MapRowCount-1 || col == game.MapColCount {
+				fieldBackground = lipgloss.Color("237")
+				backgroundSymb = "█"
+			}
+			mapView.WriteString(lipgloss.NewStyle().Width(1).Foreground(fieldBackground).Render(backgroundSymb))
 		}
 		mapView.WriteString("\n")
 	}
