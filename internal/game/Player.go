@@ -8,6 +8,7 @@ type Player struct {
 	Tail                                           []*Tile
 	MaxTailRow, MinTailRow, MaxTailCol, MinTailCol int
 	CurrentDirection                               Direction
+	LoopStarted                                    bool
 }
 
 func CreateNewPlayer(name string, color int) *Player {
@@ -23,10 +24,11 @@ func CreateNewPlayer(name string, color int) *Player {
 		Tail: []*Tile{
 			spawnPoint,
 		},
-		MaxTailRow: 0,
-		MinTailRow: MapRowCount,
-		MaxTailCol: 0,
-		MinTailCol: MapColCount,
+		MaxTailRow:  0,
+		MinTailRow:  MapRowCount,
+		MaxTailCol:  0,
+		MinTailCol:  MapColCount,
+		LoopStarted: false,
 	}
 }
 

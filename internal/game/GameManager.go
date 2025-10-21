@@ -111,18 +111,20 @@ func (gm *GameManager) processGameTick() {
 			return
 		}
 
-		if nextTile.OwnerColor == player.Color && len(player.Tail) > 3 {
+		if nextTile.OwnerColor == player.Color && player.LoopStarted {
 			player.addTileToTail(nextTile)
 			gm.spaceFill(player)
 			player.resetTailData()
+			player.LoopStarted = false
 		}
 
 		if nextTile.OwnerColor != player.Color {
 			nextTile.OwnerColor = player.Color
 			nextTile.IsTail = true
-			player.addTileToTail(nextTile)
+			player.LoopStarted = true
 		}
 
+		player.addTileToTail(nextTile)
 		// Update player's location
 		player.Location = nextTile
 	}
@@ -137,7 +139,7 @@ func (gm *GameManager) spaceFill(player *Player) {
 		{1, 0},
 		{0, 1},
 		{-1, 0},
-		{1, 0},
+		{0, -1},
 	}
 
 	ignoreQ := [][]int{
@@ -146,7 +148,12 @@ func (gm *GameManager) spaceFill(player *Player) {
 		{min(player.MaxTailRow+1, MapRowCount-1), max(player.MinTailCol-1, 0)},
 		{min(player.MaxTailRow+1, MapRowCount-1), min(player.MaxTailCol+1, MapColCount-1)},
 	}
-	//derpColor := 21412
+	// tColor := 123
+	// for _, coord := range ignoreQ {
+	// 	testTile := gm.GameMap[coord[0]][coord[1]]
+	// 	testTile.OwnerColor = &tColor
+	// }
+	// //derpColor := 21412
 	for len(ignoreQ) > 0 {
 		testCoord := ignoreQ[0]
 		ignoreQ = ignoreQ[1:]
