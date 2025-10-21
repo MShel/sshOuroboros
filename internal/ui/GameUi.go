@@ -133,7 +133,7 @@ func (m GameModel) View() string {
 			}
 			fieldBackground := lipgloss.Color("235")
 			backgroundSymb := "░"
-			if row == 0 || col == 0 || row == game.MapRowCount-1 || col == game.MapColCount {
+			if row == 0 || col == 0 || row == game.MapRowCount-1 || col == game.MapColCount-1 {
 				fieldBackground = lipgloss.Color("237")
 				backgroundSymb = "█"
 			}
