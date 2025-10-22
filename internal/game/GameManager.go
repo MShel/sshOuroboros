@@ -3,6 +3,7 @@ package game
 import (
 	"context"
 	"log"
+	"math"
 	"sync"
 	"time"
 
@@ -104,7 +105,7 @@ func (gm *GameManager) processGameTick() {
 		}
 
 		nextTile := player.GetNextTile()
-		if gm.isWall(nextTile) {
+		if gm.isWall(nextTile.Y, nextTile.X) {
 			gm.UpdateChannel <- PlayerDeadMsg{
 				*player.Color,
 			}
@@ -175,11 +176,7 @@ func (gm *GameManager) getTilesToBeFilled(seed *Tile,
 
 			for _, dir := range directions {
 				testRow, testCol := testTile.Y+dir[0], testTile.X+dir[1]
-				if testRow == 0 || testCol == 0 {
-					return
-				}
-
-				if testRow == MapRowCount-1 || testCol == MapColCount-1 {
+				if gm.isWall(testRow, testCol) {
 					return
 				}
 
@@ -266,12 +263,104 @@ func (gm *GameManager) getUpdatedPlayerEstate() map[*int]int {
 	return playersEstate
 }
 
-func (gm *GameManager) isWall(tile *Tile) bool {
-	if tile.X == 0 || tile.Y == 0 {
+func (gm *GameManager) CreateNewPlayer(playerName string, playerColor int) *Player {
+	spawnTile := gm.getSpawnTile()
+	gm.Players[playerColor] = CreateNewPlayer(playerName, playerColor, spawnTile)
+	gm.CurrentPlayerColor = playerColor
+
+	return gm.Players[playerColor]
+}
+
+func (gm *GameManager) getSpawnTile() *Tile {
+	var activePlayers []*Player
+	var sumX, sumY int
+
+	for _, player := range gm.Players {
+		if player != nil {
+			activePlayers = append(activePlayers, player)
+			sumX += player.Location.X
+			sumY += player.Location.Y
+		}
+	}
+
+	// If there are no active players, pick the center of the safe play area.
+	if len(activePlayers) == 0 {
+		return gm.GameMap[MapRowCount/2][MapColCount/2]
+	}
+
+	// the center of all of the players
+	centerAvgX := float64(sumX) / float64(len(activePlayers))
+	centerAvgY := float64(sumY) / float64(len(activePlayers))
+
+	mapCenterX := float64(MapColCount-1) / 2.0
+	mapCenterY := float64(MapRowCount-1) / 2.0
+
+	targetIdealX := 2*mapCenterX - centerAvgX
+	targetIdealY := 2*mapCenterY - centerAvgY
+
+	targetX := int(math.Max(1, math.Min(float64(MapColCount-2), targetIdealX)))
+	targetY := int(math.Max(1, math.Min(float64(MapRowCount-2), targetIdealY)))
+
+	const minSafeDistance = 5
+	searchRadius := 0 // Start search at the ideal point itself
+	maxRadius := int(math.Max(float64(MapRowCount), float64(MapColCount)))
+
+	// Loop to expand the search square layer by layer (O(k) where k is small)
+	for searchRadius <= maxRadius {
+		// Define the bounds of the current search square layer
+		minR := targetY - searchRadius
+		maxR := targetY + searchRadius
+		minC := targetX - searchRadius
+		maxC := targetX + searchRadius
+
+		// Search the perimeter of the square defined by the radius
+		for r := minR; r <= maxR; r++ {
+			for c := minC; c <= maxC; c++ {
+				// check if we already expored this perimeter
+				isPerimeter := (searchRadius == 0 || r == minR || r == maxR || c == minC || c == maxC)
+				if !isPerimeter {
+					continue
+				}
+
+				if gm.isWall(r, c) {
+					continue
+				}
+
+				currentTile := gm.GameMap[r][c]
+
+				// Check constraints: must be unclaimed and not a tail
+				if currentTile.OwnerColor != nil || currentTile.IsTail {
+					continue
+				}
+
+				// Check safety distance: must be far from all players
+				isSafe := true
+				for _, player := range activePlayers {
+					dist := getManhattanDistance(currentTile, player.Location)
+					if dist < minSafeDistance {
+						isSafe = false
+						break
+					}
+				}
+
+				if isSafe {
+					return currentTile
+				}
+			}
+		}
+
+		searchRadius++
+	}
+
+	return nil
+}
+
+func (gm *GameManager) isWall(row int, col int) bool {
+	if row == 0 || col == 0 {
 		return true
 	}
 
-	if tile.X == MapColCount || tile.Y == MapRowCount {
+	if col == MapColCount-1 || row == MapRowCount-1 {
 		return true
 	}
 

@@ -16,10 +16,6 @@ func CreateNewTile(row int, col int) *Tile {
 	}
 }
 
-func GetSpawnPoint() *Tile {
-	return getInitGameMap()[10][10]
-}
-
 var GameMap [][]*Tile
 
 func getInitGameMap() [][]*Tile {

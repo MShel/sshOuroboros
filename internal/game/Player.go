@@ -10,8 +10,7 @@ type Player struct {
 	CurrentDirection                               Direction
 }
 
-func CreateNewPlayer(name string, color int) *Player {
-	spawnPoint := GetSpawnPoint()
+func CreateNewPlayer(name string, color int, spawnPoint *Tile) *Player {
 	spawnPoint.OwnerColor = &color
 	spawnPoint.IsTail = true
 
