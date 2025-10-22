@@ -129,6 +129,8 @@ func (gm *GameManager) processGameTick() {
 				}
 				gm.UpdateChannel <- claimedEstateMsg
 			}()
+			player.Location = nextTile
+			return
 		}
 
 		if nextTile.OwnerColor != player.Color {
@@ -194,18 +196,18 @@ func (gm *GameManager) getTilesToBeFilled(seed *Tile,
 }
 
 func (gm *GameManager) spaceFill(player *Player) {
-	tileBeforeLast := player.Tail[len(player.Tail)-1]
-	tailRow, tailCol := tileBeforeLast.Y, tileBeforeLast.X
 	resultsChannel := make(chan map[*Tile]interface{})
 	searchContext, cancelSearch := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
 
 	for _, dir := range directions {
-		testRow, testCol := tailRow+dir[0], tailCol+dir[1]
-		testTile := gm.GameMap[testRow][testCol]
-		if testTile.OwnerColor != player.Color {
-			wg.Add(1)
-			go gm.getTilesToBeFilled(testTile, player.Color, searchContext, resultsChannel, &wg)
+		for _, tailTile := range player.Tail {
+			testRow, testCol := tailTile.Y+dir[0], tailTile.X+dir[1]
+			testTile := gm.GameMap[testRow][testCol]
+			if testTile.OwnerColor != player.Color {
+				wg.Add(1)
+				go gm.getTilesToBeFilled(testTile, player.Color, searchContext, resultsChannel, &wg)
+			}
 		}
 	}
 
