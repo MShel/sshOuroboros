@@ -1,7 +1,9 @@
 package game
 
 import (
+	"context"
 	"log"
+	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -15,6 +17,11 @@ type Direction struct {
 type GameTickMsg struct{}
 type PlayerDeadMsg struct {
 	PlayerColor int
+}
+
+// players estate is recalculated every time for all players once any of them claim any new estate
+type ClaimedEstateMsg struct {
+	PlayersEstate map[*int]int
 }
 
 type GameManager struct {
@@ -111,20 +118,24 @@ func (gm *GameManager) processGameTick() {
 			return
 		}
 
-		if nextTile.OwnerColor == player.Color && player.LoopStarted {
-			player.addTileToTail(nextTile)
+		if nextTile.OwnerColor == player.Color && len(player.Tail) > 3 {
 			gm.spaceFill(player)
 			player.resetTailData()
-			player.LoopStarted = false
+			// fire and forget, data might be slightly stale but its fiiine in this case
+			go func() {
+				claimedEstateMsg := ClaimedEstateMsg{
+					PlayersEstate: gm.getUpdatedPlayerEstate(),
+				}
+				gm.UpdateChannel <- claimedEstateMsg
+			}()
 		}
 
 		if nextTile.OwnerColor != player.Color {
 			nextTile.OwnerColor = player.Color
 			nextTile.IsTail = true
-			player.LoopStarted = true
+			player.Tail = append(player.Tail, nextTile)
 		}
 
-		player.addTileToTail(nextTile)
 		// Update player's location
 		player.Location = nextTile
 	}
@@ -132,88 +143,127 @@ func (gm *GameManager) processGameTick() {
 	// TODO: Implement broadcasting the updated GameMap state to all players/UI
 }
 
-func (gm *GameManager) spaceFill(player *Player) {
-	// if true this tile does not need to be filled
+var directions = [][]int{
+	{1, 0},
+	{0, 1},
+	{-1, 0},
+	{0, -1},
+}
+
+func (gm *GameManager) getTilesToBeFilled(seed *Tile,
+	playerColor *int,
+	searchContext context.Context,
+	resultsChan chan map[*Tile]interface{},
+	wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	q := []*Tile{
+		seed,
+	}
 	mapOfTilesToIgnore := make(map[*Tile]interface{})
-	directions := [][]int{
-		{1, 0},
-		{0, 1},
-		{-1, 0},
-		{0, -1},
-	}
 
-	ignoreQ := [][]int{
-		{max(player.MinTailRow-1, 0), max(player.MinTailCol-1, 0)},
-		{max(player.MinTailRow-1, 0), min(player.MaxTailCol+1, MapColCount-1)},
-		{min(player.MaxTailRow+1, MapRowCount-1), max(player.MinTailCol-1, 0)},
-		{min(player.MaxTailRow+1, MapRowCount-1), min(player.MaxTailCol+1, MapColCount-1)},
-	}
-	// tColor := 123
-	// for _, coord := range ignoreQ {
-	// 	testTile := gm.GameMap[coord[0]][coord[1]]
-	// 	testTile.OwnerColor = &tColor
-	// }
-	// //derpColor := 21412
-	for len(ignoreQ) > 0 {
-		testCoord := ignoreQ[0]
-		ignoreQ = ignoreQ[1:]
-
-		testTile := gm.GameMap[testCoord[0]][testCoord[1]]
-		//testTile.OwnerColor = &derpColor
-		mapOfTilesToIgnore[testTile] = true
-
-		for _, dir := range directions {
-			testRow, testCol := testTile.Y+dir[0], testTile.X+dir[1]
-			if testRow < player.MinTailRow-1 || testCol < player.MinTailCol-1 {
-				continue
-			}
-
-			if testRow > player.MaxTailRow+1 || testCol > player.MaxTailCol+1 {
-				continue
-			}
-
-			testTile := gm.GameMap[testRow][testCol]
-			if _, ok := mapOfTilesToIgnore[testTile]; ok {
-				continue
-			}
-
-			if testTile.OwnerColor == player.Color {
-				continue
-			}
-
-			ignoreQ = append(ignoreQ, []int{testTile.Y, testTile.X})
-			mapOfTilesToIgnore[testTile] = true
-		}
-
-	}
-
-	q := player.Tail
 	for len(q) > 0 {
-		tile := q[0]
-		q = q[1:]
-		tile.IsTail = false
-		tile.OwnerColor = player.Color
-		mapOfTilesToIgnore[tile] = true
+		select {
+		case <-searchContext.Done():
+			return
+		default:
+			testCoord := q[0]
+			q = q[1:]
 
-		for _, dir := range directions {
-			testRow, testCol := tile.Y+dir[0], tile.X+dir[1]
-			if testRow < player.MinTailRow || testCol < player.MinTailCol {
-				continue
-			}
-
-			if testRow > player.MaxTailRow || testCol > player.MaxTailCol {
-				continue
-			}
-
-			testTile := gm.GameMap[testRow][testCol]
-			if _, ok := mapOfTilesToIgnore[testTile]; ok {
-				continue
-			}
-
-			q = append(q, testTile)
+			testTile := gm.GameMap[testCoord.Y][testCoord.X]
 			mapOfTilesToIgnore[testTile] = true
+
+			for _, dir := range directions {
+				testRow, testCol := testTile.Y+dir[0], testTile.X+dir[1]
+				if testRow == 0 || testCol == 0 {
+					return
+				}
+
+				if testRow == MapRowCount-1 || testCol == MapColCount-1 {
+					return
+				}
+
+				testTile := gm.GameMap[testRow][testCol]
+				if _, ok := mapOfTilesToIgnore[testTile]; ok {
+					continue
+				}
+
+				if testTile.OwnerColor == playerColor {
+					continue
+				}
+
+				q = append(q, testTile)
+				mapOfTilesToIgnore[testTile] = true
+			}
+			if len(q) == 0 {
+				resultsChan <- mapOfTilesToIgnore
+			}
 		}
 	}
+}
+
+func (gm *GameManager) spaceFill(player *Player) {
+	tileBeforeLast := player.Tail[len(player.Tail)-1]
+	tailRow, tailCol := tileBeforeLast.Y, tileBeforeLast.X
+	resultsChannel := make(chan map[*Tile]interface{})
+	searchContext, cancelSearch := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
+
+	for _, dir := range directions {
+		testRow, testCol := tailRow+dir[0], tailCol+dir[1]
+		testTile := gm.GameMap[testRow][testCol]
+		if testTile.OwnerColor != player.Color {
+			wg.Add(1)
+			go gm.getTilesToBeFilled(testTile, player.Color, searchContext, resultsChannel, &wg)
+		}
+	}
+
+	go func() {
+		wg.Wait()
+		close(resultsChannel)
+	}()
+
+	for mapOfTiles := range resultsChannel {
+		if len(mapOfTiles) > 1 {
+			cancelSearch()
+
+			for tile := range mapOfTiles {
+				gm.GameMap[tile.Y][tile.X].OwnerColor = player.Color
+				gm.GameMap[tile.Y][tile.X].IsTail = false
+			}
+		}
+	}
+
+	for _, tile := range player.Tail {
+		tile.IsTail = false
+	}
+
+	cancelSearch()
+}
+
+func (gm *GameManager) getUpdatedPlayerEstate() map[*int]int {
+	playersEstate := make(map[*int]int)
+	for _, player := range gm.Players {
+		if player != nil {
+			playersEstate[player.Color] = 0
+		}
+	}
+
+	for row := 1; row < MapRowCount-1; row++ {
+		for col := 1; col < MapColCount-1; col++ {
+			tile := gm.GameMap[row][col]
+			if tile.IsTail {
+				continue
+			}
+			if tile.OwnerColor == nil {
+				continue
+			}
+
+			playersEstate[tile.OwnerColor] += 1
+		}
+	}
+
+	return playersEstate
 }
 
 func (gm *GameManager) isWall(tile *Tile) bool {

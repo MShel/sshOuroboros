@@ -3,12 +3,11 @@ package game
 type Player struct {
 	Name                                           string
 	Color                                          *int
-	ClaimedEstate                                  float32
+	ClaimedEstate                                  int
 	Location                                       *Tile
 	Tail                                           []*Tile
 	MaxTailRow, MinTailRow, MaxTailCol, MinTailCol int
 	CurrentDirection                               Direction
-	LoopStarted                                    bool
 }
 
 func CreateNewPlayer(name string, color int) *Player {
@@ -24,11 +23,6 @@ func CreateNewPlayer(name string, color int) *Player {
 		Tail: []*Tile{
 			spawnPoint,
 		},
-		MaxTailRow:  0,
-		MinTailRow:  MapRowCount,
-		MaxTailCol:  0,
-		MinTailCol:  MapColCount,
-		LoopStarted: false,
 	}
 }
 
@@ -60,16 +54,6 @@ func (p *Player) resetTailData() {
 	p.MaxTailCol = 0
 	p.MinTailCol = MapColCount
 	p.Tail = []*Tile{}
-}
-
-func (p *Player) addTileToTail(tile *Tile) {
-	p.MaxTailCol = max(p.MaxTailCol, tile.X)
-	p.MinTailCol = min(p.MinTailCol, tile.X)
-
-	p.MaxTailRow = max(p.MaxTailRow, tile.Y)
-	p.MinTailRow = min(p.MinTailRow, tile.Y)
-
-	p.Tail = append(p.Tail, tile)
 }
 
 func (p *Player) UpdateDirection(newDir Direction) {

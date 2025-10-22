@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +15,8 @@ import (
 type GameModel struct {
 	tea.Model
 	TickCount   int
+	EstateInfo  map[*int]int
+	ScreenWidth int
 	gameManager *game.GameManager
 }
 
@@ -65,6 +68,13 @@ func (m GameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.listenForGameUpdates()
 	case game.PlayerDeadMsg:
 		return m, tea.Quit
+	case game.ClaimedEstateMsg:
+		m.EstateInfo = msg.PlayersEstate
+		return m, m.listenForGameUpdates()
+	case tea.WindowSizeMsg:
+		m.ScreenWidth = msg.Width
+		return m, m.listenForGameUpdates()
+
 	}
 
 	return m, cmd
@@ -77,10 +87,12 @@ func (m GameModel) View() string {
 
 	gameMap := m.gameManager.GameMap
 
-	const viewportSize = 100
-
+	viewportSize := max(int(math.Round(float64(m.ScreenWidth)*0.8)), 200)
+	//feedSize := max(viewportSize-m.ScreenWidth, 20)
 	player := m.gameManager.Players[m.gameManager.CurrentPlayerColor]
 
+	playersEstate := float64(m.EstateInfo[player.Color])
+	estateMessage := fmt.Sprintf(" claimed %.2f %% of land", (playersEstate/float64(game.MapColCount*game.MapRowCount))*100)
 	startRow, startCol := 0, 0
 	if player != nil && player.Location != nil {
 		startRow = player.Location.Y - viewportSize/2
@@ -139,6 +151,16 @@ func (m GameModel) View() string {
 			}
 			mapView.WriteString(lipgloss.NewStyle().Width(1).Foreground(fieldBackground).Render(backgroundSymb))
 		}
+		if row == 0 {
+			// estateMessagePointer := 0
+			// prevEstateMessagePointer := 0
+			// for estateMessagePointer < len(estateMessage) {
+			mapView.WriteString(estateMessage)
+			// 	prevEstateMessagePointer = estateMessagePointer
+			// 	estateMessagePointer += feedSize
+			// }
+		}
+
 		mapView.WriteString("\n")
 	}
 
