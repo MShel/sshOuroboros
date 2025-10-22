@@ -118,7 +118,7 @@ func (gm *GameManager) processGameTick() {
 			return
 		}
 
-		if nextTile.OwnerColor == player.Color && len(player.Tail) > 3 {
+		if nextTile.OwnerColor == player.Color && len(player.Tail) > 0 {
 			gm.spaceFill(player)
 			player.resetTailData()
 			// fire and forget, data might be slightly stale but its fiiine in this case
