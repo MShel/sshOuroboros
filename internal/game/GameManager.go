@@ -144,13 +144,6 @@ func (gm *GameManager) processGameTick() {
 	// TODO: Implement broadcasting the updated GameMap state to all players/UI
 }
 
-var directions = [][]int{
-	{1, 0},
-	{0, 1},
-	{-1, 0},
-	{0, -1},
-}
-
 func (gm *GameManager) getTilesToBeFilled(seed *Tile,
 	playerColor *int,
 	searchContext context.Context,
@@ -186,6 +179,7 @@ func (gm *GameManager) getTilesToBeFilled(seed *Tile,
 				}
 
 				if testTile.OwnerColor == playerColor {
+					mapOfTilesToIgnore[testTile] = true
 					continue
 				}
 
@@ -221,7 +215,7 @@ func (gm *GameManager) spaceFill(player *Player) {
 	}()
 
 	for mapOfTiles := range resultsChannel {
-		if len(mapOfTiles) > 1 {
+		if len(mapOfTiles) > 0 {
 			cancelSearch()
 
 			for tile := range mapOfTiles {
