@@ -56,10 +56,8 @@ func (p *Player) resetTailData() {
 }
 
 func (p *Player) UpdateDirection(newDir Direction) {
-	// Basic Ssshnake rule: cannot reverse direction (e.g., if moving right (Dx:1), cannot move left (Dx:-1))
-	// We check if the sum of components is zero.
 	if newDir.Dx+p.CurrentDirection.Dx == 0 && newDir.Dy+p.CurrentDirection.Dy == 0 {
-		return // Ignore reversal commands
+		return
 	}
 	p.CurrentDirection = newDir
 }

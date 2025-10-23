@@ -77,9 +77,7 @@ func (m ControllerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			panic(conversionErr)
 		}
 
-		newPlayer := m.GameManager.CreateNewPlayer(msg.Name, playerColor)
-		m.GameManager.Players[playerColor] = newPlayer
-		m.GameManager.CurrentPlayerColor = playerColor
+		m.GameManager.CreateNewPlayer(msg.Name, playerColor)
 		m.GameModel = NewGameModel(m.GameManager)
 
 		go m.GameManager.StartGameLoop()
