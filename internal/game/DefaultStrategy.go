@@ -4,22 +4,11 @@ import (
 	"math"
 )
 
-// HierarchicalStrategy implements the Strategy interface.
-type HierarchicalStrategy struct{}
-
-// isSafeTile checks if a tile is within the assumed safe playing area (not a boundary wall).
-func (s *HierarchicalStrategy) isSafeTile(row, col int) bool {
-	// Check array bounds first
-	if row < 0 || row >= MapRowCount || col < 0 || col >= MapColCount {
-		return false
-	}
-
-	// Assume the outer perimeter is the wall: playable area starts at (1, 1) and ends at (Max-2, Max-2)
-	return row > 0 && row < MapRowCount-1 && col > 0 && col < MapColCount-1
-}
+// DefaultStrategy implements the Strategy interface.
+type DefaultStrategy struct{}
 
 // getNextBestDirection determines the best move for the bot based on a strict priority hierarchy.
-func (s *HierarchicalStrategy) getNextBestDirection(player *Player, gm *GameManager) Direction {
+func (s *DefaultStrategy) getNextBestDirection(player *Player, gm *GameManager) Direction {
 
 	currentTile := player.Location
 	validMoves := make(map[Direction]*Tile)
@@ -32,24 +21,16 @@ func (s *HierarchicalStrategy) getNextBestDirection(player *Player, gm *GameMana
 
 		dir := Direction{Dx: dx, Dy: dy, PlayerColor: *player.Color}
 
-		// PREVENT 180-DEGREE TURN
 		if dx == -player.CurrentDirection.Dx && dy == -player.CurrentDirection.Dy {
 			continue
 		}
 
-		// A. EXPLICIT WALL AVOIDANCE (Rule 5)
-		if !s.isSafeTile(nextY, nextX) {
+		if gm.isWall(nextY, nextX) {
 			continue
 		}
 
 		nextTile := gm.GameMap[nextY][nextX]
 
-		// B. Self-collision avoidance
-		if nextTile.IsTail && nextTile.OwnerColor == player.Color {
-			continue
-		}
-
-		// C. Opponent's head collision avoidance
 		isOpponentHead := false
 		for _, otherPlayer := range gm.Players {
 			if otherPlayer != nil && otherPlayer.Color != player.Color && otherPlayer.Location == nextTile {
@@ -69,8 +50,6 @@ func (s *HierarchicalStrategy) getNextBestDirection(player *Player, gm *GameMana
 		return player.CurrentDirection // Trapped
 	}
 
-	// --- 2. Apply Hierarchical Priorities to Select the Best Safe Move ---
-
 	// P1: Attack
 	for dir, tile := range validMoves {
 		if gm.isOtherPlayerTail(tile, player.Color) {
@@ -84,10 +63,10 @@ func (s *HierarchicalStrategy) getNextBestDirection(player *Player, gm *GameMana
 	isThreatened := s.calculateThreatScore(player, gm) > 0
 
 	for dir, tile := range validMoves {
-		if tile.OwnerColor != nil && *tile.OwnerColor == *player.Color && !tile.IsTail {
+		if tile.OwnerColor != nil && *tile.OwnerColor == *player.Color {
 			estimatedGain := s.estimateTerritoryGain(player)
 
-			if estimatedGain >= 10 || isThreatened {
+			if estimatedGain >= 1 || isThreatened {
 				if estimatedGain > maxGain {
 					maxGain = estimatedGain
 					bestClosingDir = dir
@@ -100,16 +79,13 @@ func (s *HierarchicalStrategy) getNextBestDirection(player *Player, gm *GameMana
 		return bestClosingDir
 	}
 
-	// P3: Survival and Fleeing
 	if isThreatened {
 		return s.getSafestFleeDirection(player, gm, validMoves)
 	}
 
-	// P4: Safe Expansion (Interior/Center-Seeking Bias)
 	bestDir := player.CurrentDirection
 	minDistToClaimed := math.MaxInt32
 
-	// Initialize bestDir to be a valid move
 	for dir := range validMoves {
 		bestDir = dir
 		break
@@ -117,7 +93,6 @@ func (s *HierarchicalStrategy) getNextBestDirection(player *Player, gm *GameMana
 
 	nearestClaimedTile := s.findNearestClaimedTile(player.Location, player.Color, gm)
 
-	// Define the map center for the new bias
 	centerTile := &Tile{X: MapColCount / 2, Y: MapRowCount / 2}
 
 	for dir, tile := range validMoves {
@@ -127,19 +102,16 @@ func (s *HierarchicalStrategy) getNextBestDirection(player *Player, gm *GameMana
 			dist = getManhattanDistance(tile, nearestClaimedTile)
 		}
 
-		// Minor bonus for continuing straight (keeps lines clean, but not dominant)
 		if dir.Dx == player.CurrentDirection.Dx && dir.Dy == player.CurrentDirection.Dy {
 			dist -= 2
 		}
 
-		// **CRITICAL FIX: CENTER-SEEKING BIAS**
-		if len(player.Tail) > 15 { // Only activate bias when tail is long
+		if len(player.Tail) > 5 {
 			distToCenter := getManhattanDistance(tile, centerTile)
 			currentDistToCenter := getManhattanDistance(currentTile, centerTile)
 
-			// Penalty for moving *away* from the map center (forces inward turn)
 			if distToCenter > currentDistToCenter {
-				dist += 50 // Strong penalty to discourage perimeter movement
+				dist += 50
 			}
 		}
 
@@ -152,11 +124,7 @@ func (s *HierarchicalStrategy) getNextBestDirection(player *Player, gm *GameMana
 	return bestDir
 }
 
-// All helper functions (findNearestClaimedTile, getSafestFleeDirection, etc.) remain the same
-// but are listed here for completeness and to show the consistent use of isSafeTile.
-
-// findNearestClaimedTile performs a limited BFS for the closest claimed tile.
-func (s *HierarchicalStrategy) findNearestClaimedTile(start *Tile, playerColor *int, gm *GameManager) *Tile {
+func (s *DefaultStrategy) findNearestClaimedTile(start *Tile, playerColor *int, gm *GameManager) *Tile {
 	const maxSearchDepth = 15
 
 	q := []*Tile{start}
@@ -175,7 +143,7 @@ func (s *HierarchicalStrategy) findNearestClaimedTile(start *Tile, playerColor *
 			return nil
 		}
 
-		if current.OwnerColor != nil && *current.OwnerColor == *playerColor && !current.IsTail {
+		if current.OwnerColor != nil && *current.OwnerColor == *playerColor {
 			return current
 		}
 
@@ -183,7 +151,7 @@ func (s *HierarchicalStrategy) findNearestClaimedTile(start *Tile, playerColor *
 			dx, dy := dirCoords[1], dirCoords[0]
 			nextRow, nextCol := current.Y+dy, current.X+dx
 
-			if !s.isSafeTile(nextRow, nextCol) {
+			if gm.isWall(nextRow, nextCol) {
 				continue
 			}
 
@@ -200,8 +168,7 @@ func (s *HierarchicalStrategy) findNearestClaimedTile(start *Tile, playerColor *
 	return nil
 }
 
-// getSafestFleeDirection is a new function to handle high-threat scenarios.
-func (s *HierarchicalStrategy) getSafestFleeDirection(player *Player, gm *GameManager, validMoves map[Direction]*Tile) Direction {
+func (s *DefaultStrategy) getSafestFleeDirection(player *Player, gm *GameManager, validMoves map[Direction]*Tile) Direction {
 	nearestOpponentHead := s.findNearestOpponentHead(player, gm)
 
 	if nearestOpponentHead == nil {
@@ -239,8 +206,7 @@ func (s *HierarchicalStrategy) getSafestFleeDirection(player *Player, gm *GameMa
 	return bestFleeDir
 }
 
-// getBestExpansionDirection is P4 logic extracted for clarity.
-func (s *HierarchicalStrategy) getBestExpansionDirection(player *Player, gm *GameManager, validMoves map[Direction]*Tile) Direction {
+func (s *DefaultStrategy) getBestExpansionDirection(player *Player, gm *GameManager, validMoves map[Direction]*Tile) Direction {
 	bestDir := player.CurrentDirection
 	minDistToClaimed := math.MaxInt32
 
@@ -282,7 +248,7 @@ func (s *HierarchicalStrategy) getBestExpansionDirection(player *Player, gm *Gam
 	return bestDir
 }
 
-func (s *HierarchicalStrategy) findNearestOpponentHead(player *Player, gm *GameManager) *Tile {
+func (s *DefaultStrategy) findNearestOpponentHead(player *Player, gm *GameManager) *Tile {
 	minDist := math.MaxInt32
 	var nearestHead *Tile
 
@@ -300,7 +266,7 @@ func (s *HierarchicalStrategy) findNearestOpponentHead(player *Player, gm *GameM
 	return nearestHead
 }
 
-func (s *HierarchicalStrategy) calculateThreatScore(player *Player, gm *GameManager) int {
+func (s *DefaultStrategy) calculateThreatScore(player *Player, gm *GameManager) int {
 	tailLength := len(player.Tail)
 	if tailLength < 2 {
 		return 0
@@ -331,7 +297,7 @@ func (s *HierarchicalStrategy) calculateThreatScore(player *Player, gm *GameMana
 	return totalThreat
 }
 
-func (s *HierarchicalStrategy) estimateTerritoryGain(player *Player) int {
+func (s *DefaultStrategy) estimateTerritoryGain(player *Player) int {
 	tailLength := len(player.Tail)
 	if tailLength < 3 {
 		return 0
@@ -340,4 +306,4 @@ func (s *HierarchicalStrategy) estimateTerritoryGain(player *Player) int {
 }
 
 // Get the implementation of the strategy interface.
-var AgresssorStrategy Strategy = &HierarchicalStrategy{}
+var AgresssorStrategy Strategy = &DefaultStrategy{}

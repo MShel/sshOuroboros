@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -87,7 +86,7 @@ func (m GameModel) View() string {
 
 	gameMap := m.gameManager.GameMap
 
-	viewportSize := max(int(math.Round(float64(m.ScreenWidth)*0.8)), 200)
+	viewportSize := 200
 	//feedSize := max(viewportSize-m.ScreenWidth, 20)
 	player := m.gameManager.Players[m.gameManager.CurrentPlayerColor]
 

@@ -38,8 +38,8 @@ type GameManager struct {
 }
 
 var singletonGameManager *GameManager
-var MapColCount = 80
-var MapRowCount = 40
+var MapColCount = 100
+var MapRowCount = 100
 
 func GetNewGameManager() *GameManager {
 	if singletonGameManager != nil {

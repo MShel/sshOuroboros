@@ -15,10 +15,10 @@ func main() {
 	gameManager := game.GetNewGameManager()
 
 	botMaster := game.NewBotMaster(gameManager)
-	//for i := range 10 {
-	botPlayer := gameManager.CreateNewPlayer("derp "+strconv.Itoa(0), rand.Intn(255))
-	botMaster.ControlledPlayers[*botPlayer.Color] = &game.Bot{Player: botPlayer, BotStrategy: game.AgresssorStrategy}
-	//}
+	for i := range 10 {
+		botPlayer := gameManager.CreateNewPlayer("derp "+strconv.Itoa(i), rand.Intn(255))
+		botMaster.ControlledPlayers[*botPlayer.Color] = &game.Bot{Player: botPlayer, BotStrategy: game.AgresssorStrategy}
+	}
 
 	go botMaster.StartBotFleet()
 
