@@ -29,6 +29,7 @@ type GameManager struct {
 	// map int for color and pointer to player(null if color is not allocated)
 	// we will init map with 256 colors for max players
 	Players              map[int]*Player
+	PlayersMutex         sync.RWMutex
 	GameMap              [][]*Tile
 	DirectionChannel     chan Direction
 	SunsetPlayersChannel chan *Player
@@ -55,7 +56,7 @@ func GetNewGameManager() *GameManager {
 	singletonGameManager = &GameManager{
 		DirectionChannel:     make(chan Direction, 256),
 		UpdateChannel:        make(chan tea.Msg, 256),
-		SunsetPlayersChannel: make(chan *Player, 5120),
+		SunsetPlayersChannel: make(chan *Player, 256),
 		IsRunning:            false,
 		cancelContext:        cancel, // Store the cancel function
 		GameContext:          gameContex,
@@ -78,7 +79,7 @@ func (gm *GameManager) StartGameLoop() {
 	}
 	gm.IsRunning = true
 	duration := 100 * time.Millisecond
-	sunsetWorkersCount := 25
+	sunsetWorkersCount := 20
 	for w := 1; w <= sunsetWorkersCount; w++ {
 		go gm.sunsetPlayersWorker()
 	}
@@ -119,9 +120,17 @@ func (gm *GameManager) processPlayerInput(dir Direction) {
 
 // processGameTick is called every GameTickDuration to move all players and check collisions.
 func (gm *GameManager) processGameTick() {
-	// In a multiplayer game, you would typically lock access to GameMap here.
 
+	gm.PlayersMutex.RLock()
+	activePlayers := make([]*Player, 0, len(gm.Players))
 	for _, player := range gm.Players {
+		if player != nil {
+			activePlayers = append(activePlayers, player)
+		}
+	}
+	gm.PlayersMutex.RUnlock()
+
+	for _, player := range activePlayers {
 		if player == nil {
 			continue
 		}
@@ -137,17 +146,30 @@ func (gm *GameManager) processGameTick() {
 		}
 
 		if gm.isOtherPlayerTail(nextTile, player.Color) {
-			if gm.Players[*nextTile.OwnerColor] != nil {
-				gm.SunsetPlayersChannel <- gm.Players[*nextTile.OwnerColor]
+
+			var otherPlayer *Player
+			gm.PlayersMutex.RLock()
+			gm.MapMutex.RLock() // <--- Lock to read from gm.Players map
+			if nextTile.OwnerColor != nil && gm.Players[*nextTile.OwnerColor] != nil {
+				otherPlayer = gm.Players[*nextTile.OwnerColor]
+			}
+			gm.PlayersMutex.RUnlock() // <--- Unlock immediately after read
+			gm.MapMutex.RUnlock()     // <--- Lock to read from gm.Players map
+
+			if otherPlayer != nil {
+				gm.SunsetPlayersChannel <- otherPlayer // Send the *otherPlayer*
+
+				// The player is now being sunset in a worker, but we continue processing
+				// the *current* player's turn (wgm.Players[*nextTile.OwnerColor]ho took the tail).
+
+				// We should also check if the current player (who is taking the tail)
+				// is not the same as the one being sunsetted before modifying the tile.
+				// Assuming player.Color is a reference to the player's color int.
 
 				nextTile.OwnerColor = player.Color
 				nextTile.IsTail = true
 				player.Tail = append(player.Tail, nextTile)
 				player.Location = nextTile
-
-				// gm.UpdateChannel <- PlayerDeadMsg{
-				// 	*nextTile.OwnerColor,
-				// }
 				continue
 			}
 		}
@@ -412,12 +434,15 @@ func (gm *GameManager) sunsetPlayersWorker() {
 }
 
 func (gm *GameManager) sunsetPlayer(player *Player) {
+	gm.PlayersMutex.Lock()
+	defer gm.PlayersMutex.Unlock()
+	gm.MapMutex.Lock()
+	defer gm.MapMutex.Unlock()
 	playerFinalClaimedLand := 0.0
 	// this can be improved number of differrent ways
 	// like doing a scan from 4 differrent corners with shared vizited map
 	// and do it in 4 goroutines
-	gm.MapMutex.Lock()
-	gm.Players[*player.Color] = nil
+
 	for row := 1; row < MapRowCount-1; row++ {
 		for col := 1; col < MapColCount-1; col++ {
 			testTile := gm.GameMap[row][col]
@@ -428,8 +453,7 @@ func (gm *GameManager) sunsetPlayer(player *Player) {
 			}
 		}
 	}
-
-	gm.MapMutex.Unlock()
+	gm.Players[*player.Color] = nil
 }
 
 func (gm *GameManager) isWall(row int, col int) bool {

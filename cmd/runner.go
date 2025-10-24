@@ -21,6 +21,13 @@ func main() {
 
 	go botMaster.StartBotFleet()
 
+	f, err := tea.LogToFile("debug.log", "debug")
+	if err != nil {
+		fmt.Println("fatal:", err)
+		os.Exit(1)
+	}
+	defer f.Close()
+
 	p := tea.NewProgram(ui.NewControllerModel(gameManager), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("error %v", err)
