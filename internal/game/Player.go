@@ -1,5 +1,7 @@
 package game
 
+import "math/rand"
+
 type Player struct {
 	Name                                           string
 	Color                                          *int
@@ -13,12 +15,18 @@ type Player struct {
 func CreateNewPlayer(name string, color int, spawnPoint *Tile) *Player {
 	spawnPoint.OwnerColor = &color
 	spawnPoint.IsTail = true
+	possibleDirections := []Direction{
+		Direction{Dx: 1, Dy: 0},
+		Direction{Dx: 0, Dy: 1},
+		Direction{Dx: -1, Dy: 0},
+		Direction{Dx: 0, Dy: -1},
+	}
 
 	return &Player{
 		Name:             name,
 		Color:            &color,
 		Location:         spawnPoint,
-		CurrentDirection: Direction{Dx: 1, Dy: 0},
+		CurrentDirection: possibleDirections[rand.Intn(len(possibleDirections))],
 		Tail: []*Tile{
 			spawnPoint,
 		},

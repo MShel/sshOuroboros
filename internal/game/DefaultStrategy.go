@@ -9,7 +9,6 @@ type DefaultStrategy struct{}
 
 // getNextBestDirection determines the best move for the bot based on a strict priority hierarchy.
 func (s *DefaultStrategy) getNextBestDirection(player *Player, gm *GameManager) Direction {
-
 	currentTile := player.Location
 	validMoves := make(map[Direction]*Tile)
 

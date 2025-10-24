@@ -28,29 +28,39 @@ type ClaimedEstateMsg struct {
 type GameManager struct {
 	// map int for color and pointer to player(null if color is not allocated)
 	// we will init map with 256 colors for max players
-	Players          map[int]*Player
-	GameMap          [][]*Tile
-	DirectionChannel chan Direction
-	UpdateChannel    chan tea.Msg
-	//tha will go away once we will have a server and multiplayer and blackjack
+	Players              map[int]*Player
+	GameMap              [][]*Tile
+	DirectionChannel     chan Direction
+	SunsetPlayersChannel chan *Player
+	UpdateChannel        chan tea.Msg
+
 	CurrentPlayerColor int
 	IsRunning          bool
+	MapMutex           sync.RWMutex
+	cancelContext      context.CancelFunc
+	GameContext        context.Context
 }
 
 var singletonGameManager *GameManager
-var MapColCount = 100
-var MapRowCount = 100
+var MapColCount = 200
+var MapRowCount = 50
 
 func GetNewGameManager() *GameManager {
 	if singletonGameManager != nil {
 		return singletonGameManager
 	}
 
+	gameContex, cancel := context.WithCancel(context.Background()) // Create cancellable context
+
 	singletonGameManager = &GameManager{
-		DirectionChannel: make(chan Direction, 10),
-		UpdateChannel:    make(chan tea.Msg),
-		IsRunning:        false,
+		DirectionChannel:     make(chan Direction, 256),
+		UpdateChannel:        make(chan tea.Msg, 256),
+		SunsetPlayersChannel: make(chan *Player, 5120),
+		IsRunning:            false,
+		cancelContext:        cancel, // Store the cancel function
+		GameContext:          gameContex,
 	}
+
 	singletonGameManager.Players = make(map[int]*Player)
 	// 256 colors --- 256 players
 	for i := 0; i < 256; i++ {
@@ -68,6 +78,10 @@ func (gm *GameManager) StartGameLoop() {
 	}
 	gm.IsRunning = true
 	duration := 100 * time.Millisecond
+	sunsetWorkersCount := 25
+	for w := 1; w <= sunsetWorkersCount; w++ {
+		go gm.sunsetPlayersWorker()
+	}
 
 	ticker := time.NewTicker(duration)
 	defer ticker.Stop()
@@ -75,15 +89,24 @@ func (gm *GameManager) StartGameLoop() {
 	for gm.IsRunning {
 		select {
 		case <-ticker.C:
-			// 1. GAME TICK: Process the game state
 			gm.processGameTick()
 			gm.UpdateChannel <- GameTickMsg{}
 		case dir := <-gm.DirectionChannel:
-			// 2. INPUT: Process immediate player input
 			gm.processPlayerInput(dir)
 		}
 	}
 	log.Println("Game loop stopped.")
+}
+
+func (gm *GameManager) StopGameLoop() {
+	if !gm.IsRunning {
+		return
+	}
+	gm.IsRunning = false
+	gm.cancelContext()
+	close(gm.DirectionChannel)
+	close(gm.SunsetPlayersChannel)
+	log.Println("Game Manager shutdown initiated.")
 }
 
 // processPlayerInput immediately updates the direction of the specified player.
@@ -105,31 +128,42 @@ func (gm *GameManager) processGameTick() {
 
 		nextTile := player.GetNextTile()
 		if gm.isWall(nextTile.Y, nextTile.X) {
+			gm.SunsetPlayersChannel <- player
+
 			gm.UpdateChannel <- PlayerDeadMsg{
 				*player.Color,
 			}
-			return
+			continue
 		}
 
 		if gm.isOtherPlayerTail(nextTile, player.Color) {
-			// gm.UpdateChannel <- PlayerDeadMsg{
-			// 	*player.Color,
-			// }
-			return
+			if gm.Players[*nextTile.OwnerColor] != nil {
+				gm.SunsetPlayersChannel <- gm.Players[*nextTile.OwnerColor]
+
+				nextTile.OwnerColor = player.Color
+				nextTile.IsTail = true
+				player.Tail = append(player.Tail, nextTile)
+				player.Location = nextTile
+
+				// gm.UpdateChannel <- PlayerDeadMsg{
+				// 	*nextTile.OwnerColor,
+				// }
+				continue
+			}
 		}
 
 		if nextTile.OwnerColor == player.Color && len(player.Tail) > 0 {
 			gm.spaceFill(player)
 			player.resetTailData()
 			// fire and forget, data might be slightly stale but its fiiine in this case
-			go func() {
-				claimedEstateMsg := ClaimedEstateMsg{
-					PlayersEstate: gm.getUpdatedPlayerEstate(),
-				}
-				gm.UpdateChannel <- claimedEstateMsg
-			}()
+			// go func() {
+			// 	claimedEstateMsg := ClaimedEstateMsg{
+			// 		PlayersEstate: gm.getUpdatedPlayerEstate(),
+			// 	}
+			// 	gm.UpdateChannel <- claimedEstateMsg
+			// }()
 			player.Location = nextTile
-			return
+			continue
 		}
 
 		if nextTile.OwnerColor != player.Color {
@@ -162,50 +196,103 @@ func (gm *GameManager) getTilesToBeFilled(seed *Tile,
 		case <-searchContext.Done():
 			return
 		default:
-			testCoord := q[0]
-			q = q[1:]
-
-			testTile := gm.GameMap[testCoord.Y][testCoord.X]
-			mapOfTilesToIgnore[testTile] = true
-
-			for _, dir := range directions {
-				testRow, testCol := testTile.Y+dir[0], testTile.X+dir[1]
-				if gm.isWall(testRow, testCol) {
-					return
-				}
-
-				testTile := gm.GameMap[testRow][testCol]
-				if _, ok := mapOfTilesToIgnore[testTile]; ok {
-					continue
-				}
-
-				if testTile.OwnerColor == playerColor {
-					mapOfTilesToIgnore[testTile] = true
-					continue
-				}
-
-				q = append(q, testTile)
-				mapOfTilesToIgnore[testTile] = true
-			}
-			if len(q) == 0 {
-				resultsChan <- mapOfTilesToIgnore
-			}
 		}
+
+		testCoord := q[0]
+		q = q[1:]
+
+		testTile := gm.GameMap[testCoord.Y][testCoord.X]
+		mapOfTilesToIgnore[testTile] = true
+
+		for _, dir := range directions {
+			testRow, testCol := testTile.Y+dir[0], testTile.X+dir[1]
+			if gm.isWall(testRow, testCol) {
+				return
+			}
+
+			testTile := gm.GameMap[testRow][testCol]
+			if _, ok := mapOfTilesToIgnore[testTile]; ok {
+				continue
+			}
+
+			if testTile.OwnerColor == playerColor {
+				mapOfTilesToIgnore[testTile] = true
+				continue
+			}
+
+			q = append(q, testTile)
+			mapOfTilesToIgnore[testTile] = true
+		}
+	}
+
+	select {
+	case <-searchContext.Done():
+		return
+	case resultsChan <- mapOfTilesToIgnore:
+	}
+}
+
+type TileFillerInfo struct {
+	TestTile       *Tile
+	Player         *Player
+	SearchContext  context.Context
+	ResultsChannel chan map[*Tile]interface{}
+	WaitG          *sync.WaitGroup
+}
+
+func (gm *GameManager) tileFillerWorker(fillerChannel chan TileFillerInfo) {
+	for {
+		tileFillerInfo, ok := <-fillerChannel
+		if !ok { // Channel was closed
+			return
+		}
+
+		gm.getTilesToBeFilled(
+			tileFillerInfo.TestTile,
+			tileFillerInfo.Player.Color,
+			tileFillerInfo.SearchContext,
+			tileFillerInfo.ResultsChannel,
+			tileFillerInfo.WaitG)
 	}
 }
 
 func (gm *GameManager) spaceFill(player *Player) {
-	resultsChannel := make(chan map[*Tile]interface{})
-	searchContext, cancelSearch := context.WithCancel(context.Background())
-	var wg sync.WaitGroup
+	gm.MapMutex.Lock()
+	defer gm.MapMutex.Unlock()
 
-	for _, dir := range directions {
-		for _, tailTile := range player.Tail {
+	resultsChannel := make(chan map[*Tile]interface{}, 1)
+	searchContext, cancelSearch := context.WithCancel(context.Background())
+	fillerChannel := make(chan TileFillerInfo, 50)
+	TilesFillerWorkers := 3
+	for w := 1; w <= TilesFillerWorkers; w++ {
+		go gm.tileFillerWorker(fillerChannel)
+	}
+
+	var wg sync.WaitGroup
+	vizited := make(map[*Tile]bool)
+
+	for i, tailTile := range player.Tail {
+		if i%2 != 0 {
+			continue
+		}
+		for _, dir := range directions {
 			testRow, testCol := tailTile.Y+dir[0], tailTile.X+dir[1]
 			testTile := gm.GameMap[testRow][testCol]
+
+			if _, ok := vizited[testTile]; ok || (testTile.IsTail && testTile.OwnerColor == player.Color) {
+				continue
+			}
+
+			vizited[testTile] = true
 			if testTile.OwnerColor != player.Color {
 				wg.Add(1)
-				go gm.getTilesToBeFilled(testTile, player.Color, searchContext, resultsChannel, &wg)
+				fillerChannel <- TileFillerInfo{
+					TestTile:       testTile,
+					Player:         player,
+					SearchContext:  searchContext,
+					ResultsChannel: resultsChannel,
+					WaitG:          &wg,
+				}
 			}
 		}
 	}
@@ -213,16 +300,17 @@ func (gm *GameManager) spaceFill(player *Player) {
 	go func() {
 		wg.Wait()
 		close(resultsChannel)
+		close(fillerChannel)
 	}()
 
 	for mapOfTiles := range resultsChannel {
 		if len(mapOfTiles) > 0 {
 			cancelSearch()
-
 			for tile := range mapOfTiles {
 				gm.GameMap[tile.Y][tile.X].OwnerColor = player.Color
 				gm.GameMap[tile.Y][tile.X].IsTail = false
 			}
+			break
 		}
 	}
 
@@ -234,6 +322,9 @@ func (gm *GameManager) spaceFill(player *Player) {
 }
 
 func (gm *GameManager) getUpdatedPlayerEstate() map[*int]int {
+	gm.MapMutex.RLock()
+	defer gm.MapMutex.RUnlock()
+
 	playersEstate := make(map[*int]int)
 	for _, player := range gm.Players {
 		if player != nil {
@@ -306,6 +397,39 @@ func (gm *GameManager) getSpawnTile() *Tile {
 	}
 
 	return bestTile
+}
+
+func (gm *GameManager) sunsetPlayersWorker() {
+	for {
+		player, ok := <-gm.SunsetPlayersChannel
+		if !ok {
+			return
+		}
+		if player != nil {
+			gm.sunsetPlayer(player)
+		}
+	}
+}
+
+func (gm *GameManager) sunsetPlayer(player *Player) {
+	playerFinalClaimedLand := 0.0
+	// this can be improved number of differrent ways
+	// like doing a scan from 4 differrent corners with shared vizited map
+	// and do it in 4 goroutines
+	gm.MapMutex.Lock()
+	gm.Players[*player.Color] = nil
+	for row := 1; row < MapRowCount-1; row++ {
+		for col := 1; col < MapColCount-1; col++ {
+			testTile := gm.GameMap[row][col]
+			if testTile.OwnerColor == player.Color {
+				playerFinalClaimedLand += 1.0
+				testTile.OwnerColor = nil
+				testTile.IsTail = false
+			}
+		}
+	}
+
+	gm.MapMutex.Unlock()
 }
 
 func (gm *GameManager) isWall(row int, col int) bool {

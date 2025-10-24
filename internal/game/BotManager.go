@@ -1,21 +1,26 @@
 package game
 
 import (
-	"sync"
+	"context"
+	"log"
 	"time"
 )
 
 type BotMaster struct {
-	ControlledPlayers map[int]*Bot
-	IsRunning         bool
-	GameMainManager   *GameManager
+	ControlledPlayers    map[int]*Bot
+	IsRunning            bool
+	GameMainManager      *GameManager
+	BotProcessingChannel chan *Bot
+	shutdownCtx          context.Context // Add this
 }
 
-func NewBotMaster(gm *GameManager) *BotMaster {
+func NewBotMaster(gm *GameManager, gameContext context.Context) *BotMaster {
 	return &BotMaster{
-		ControlledPlayers: make(map[int]*Bot),
-		IsRunning:         false,
-		GameMainManager:   gm,
+		ControlledPlayers:    make(map[int]*Bot),
+		IsRunning:            false,
+		GameMainManager:      gm,
+		BotProcessingChannel: make(chan *Bot, 5000),
+		shutdownCtx:          gameContext,
 	}
 }
 
@@ -24,36 +29,55 @@ func (bm *BotMaster) StartBotFleet() {
 		return
 	}
 
-	bm.IsRunning = true
-	// we see if direction switch is needed per for every 120
-	duration := 120 * time.Millisecond
+	botWorkersCount := 30
+	for w := 1; w <= botWorkersCount; w++ {
+		go bm.processBot()
+	}
 
+	bm.IsRunning = true
+	duration := 120 * time.Millisecond
 	ticker := time.NewTicker(duration)
 	defer ticker.Stop()
 
 	for bm.IsRunning {
-		<-ticker.C
-		bm.processBots()
+		select {
+		case <-ticker.C:
+			bm.processBots()
+		case <-bm.shutdownCtx.Done():
+			log.Println("Bot Master main loop stopped.")
+			return
+		}
+	}
+}
+
+// Implement a stop function
+func (bm *BotMaster) StopBotFleet() {
+	if !bm.IsRunning {
+		return
+	}
+	bm.IsRunning = false
+	close(bm.BotProcessingChannel)
+}
+
+func (bm *BotMaster) processBot() {
+	for bot := range bm.BotProcessingChannel {
+		bm.updateBotLocation(bot)
+	}
+}
+
+func (bm *BotMaster) updateBotLocation(bot *Bot) {
+	nextDirection := bot.BotStrategy.getNextBestDirection(bot.Player, bm.GameMainManager)
+	if nextDirection.Dx != bot.CurrentDirection.Dx || nextDirection.Dy != bot.CurrentDirection.Dy {
+		bot.Player.UpdateDirection(nextDirection)
 	}
 }
 
 func (bm *BotMaster) processBots() {
-	var wg sync.WaitGroup
 	for _, bot := range bm.ControlledPlayers {
 		if bot == nil {
 			continue
 		}
 
-		wg.Add(1)
-		// Process each bot's direction decision in a separate goroutine
-		go func(b *Bot) {
-			defer wg.Done()
-			nextDirection := b.BotStrategy.getNextBestDirection(b.Player, bm.GameMainManager)
-			if nextDirection.Dx != b.CurrentDirection.Dx || nextDirection.Dy != b.CurrentDirection.Dy {
-				bm.GameMainManager.DirectionChannel <- nextDirection
-			}
-
-		}(bot)
+		bm.BotProcessingChannel <- bot
 	}
-	wg.Wait()
 }

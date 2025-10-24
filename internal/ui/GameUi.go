@@ -43,6 +43,7 @@ func (m GameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Elegantly map Arrow Keys and WASD to a single direction command
 		switch msg.String() {
 		case "ctrl+c", "q":
+			m.gameManager.StopGameLoop()
 			return m, tea.Quit
 		case "up", "k", "w":
 			engineCommand = game.Direction{Dx: 0, Dy: -1, PlayerColor: m.gameManager.CurrentPlayerColor}
@@ -66,7 +67,7 @@ func (m GameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.TickCount++
 		return m, m.listenForGameUpdates()
 	case game.PlayerDeadMsg:
-		return m, tea.Quit
+		return m, m.listenForGameUpdates()
 	case game.ClaimedEstateMsg:
 		m.EstateInfo = msg.PlayersEstate
 		return m, m.listenForGameUpdates()
@@ -86,47 +87,33 @@ func (m GameModel) View() string {
 
 	gameMap := m.gameManager.GameMap
 
-	viewportSize := 200
+	//viewportSize := 200
 	//feedSize := max(viewportSize-m.ScreenWidth, 20)
-	player := m.gameManager.Players[m.gameManager.CurrentPlayerColor]
+	//player := m.gameManager.Players[m.gameManager.CurrentPlayerColor]
 
-	playersEstate := float64(m.EstateInfo[player.Color])
-	estateMessage := fmt.Sprintf(" claimed %.2f %% of land", (playersEstate/float64(game.MapColCount*game.MapRowCount))*100)
+	// playersEstate := float64(m.EstateInfo[player.Color])
+	// estateMessage := fmt.Sprintf(" claimed %.2f %% of land", (playersEstate/float64(game.MapColCount*game.MapRowCount))*100)
 	startRow, startCol := 0, 0
-	if player != nil && player.Location != nil {
-		startRow = player.Location.Y - viewportSize/2
-		startCol = player.Location.X - viewportSize/2
-	}
+	// if player != nil && player.Location != nil {
+	// 	startRow = player.Location.Y - viewportSize/2
+	// 	startCol = player.Location.X - viewportSize/2
+	// }
 
-	if startRow < 0 {
-		startRow = 0
-	}
-	if startCol < 0 {
-		startCol = 0
-	}
+	// if startRow < 0 {
+	// 	startRow = 0
+	// }
+	// if startCol < 0 {
+	// 	startCol = 0
+	// }
 
-	endRow := startRow + viewportSize
-	endCol := startCol + viewportSize
+	// endRow := startRow + viewportSize
+	// endCol := startCol + viewportSize
 
-	if endRow > game.MapRowCount {
-		endRow = game.MapRowCount
-	}
-	if endCol > game.MapColCount {
-		endCol = game.MapColCount
-	}
-
-	if endRow > game.MapRowCount {
-		endRow = game.MapRowCount
-	}
-	if endCol > game.MapColCount {
-		endCol = game.MapColCount
-	}
-
-	for row := startRow; row < endRow; row++ {
-		for col := startCol; col < endCol; col++ {
+	for row := startRow; row < game.MapRowCount; row++ {
+		for col := startCol; col < game.MapColCount; col++ {
 			currTile := gameMap[row][col]
 
-			if currTile.OwnerColor != nil && (currTile.IsTail || player.Location == currTile) {
+			if currTile.OwnerColor != nil && (currTile.IsTail) {
 				mapView.WriteString(
 					lipgloss.
 						NewStyle().
@@ -154,7 +141,7 @@ func (m GameModel) View() string {
 			// estateMessagePointer := 0
 			// prevEstateMessagePointer := 0
 			// for estateMessagePointer < len(estateMessage) {
-			mapView.WriteString(estateMessage)
+			//mapView.WriteString(estateMessage)
 			// 	prevEstateMessagePointer = estateMessagePointer
 			// 	estateMessagePointer += feedSize
 			// }
