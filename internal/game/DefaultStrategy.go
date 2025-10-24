@@ -20,23 +20,30 @@ func (s *DefaultStrategy) getNextBestDirection(player *Player, gm *GameManager) 
 
 		dir := Direction{Dx: dx, Dy: dy, PlayerColor: *player.Color}
 
+		// Prevent moving backwards
 		if dx == -player.CurrentDirection.Dx && dy == -player.CurrentDirection.Dy {
 			continue
 		}
 
+		// Wall check
 		if gm.isWall(nextY, nextX) {
 			continue
 		}
 
 		nextTile := gm.GameMap[nextY][nextX]
 
+		// Check for collision with opponent's head
 		isOpponentHead := false
-		for _, otherPlayer := range gm.Players {
-			if otherPlayer != nil && otherPlayer.Color != player.Color && otherPlayer.Location == nextTile {
-				isOpponentHead = true
-				break
+		gm.Players.Range(func(key, value interface{}) bool {
+			if otherPlayer, ok := value.(*Player); ok && otherPlayer != nil {
+				// We compare the sync.Map key (int color) to the current player's color
+				if key.(int) != *player.Color && otherPlayer.Location == nextTile {
+					isOpponentHead = true
+					return false // Stop iteration if opponent head found
+				}
 			}
-		}
+			return true // Continue iteration
+		})
 
 		if isOpponentHead {
 			continue
@@ -49,7 +56,7 @@ func (s *DefaultStrategy) getNextBestDirection(player *Player, gm *GameManager) 
 		return player.CurrentDirection // Trapped
 	}
 
-	// P1: Attack
+	// P1: Attack (Tail Collision)
 	for dir, tile := range validMoves {
 		if gm.isOtherPlayerTail(tile, player.Color) {
 			return dir
@@ -65,6 +72,7 @@ func (s *DefaultStrategy) getNextBestDirection(player *Player, gm *GameManager) 
 		if tile.OwnerColor != nil && *tile.OwnerColor == *player.Color {
 			estimatedGain := s.estimateTerritoryGain(player)
 
+			// Only close the loop if we have a decent tail length or are currently threatened
 			if estimatedGain >= 1 || isThreatened {
 				if estimatedGain > maxGain {
 					maxGain = estimatedGain
@@ -78,10 +86,12 @@ func (s *DefaultStrategy) getNextBestDirection(player *Player, gm *GameManager) 
 		return bestClosingDir
 	}
 
+	// P3: Flee if threatened
 	if isThreatened {
 		return s.getSafestFleeDirection(player, gm, validMoves)
 	}
 
+	// P4: Expand toward claimed territory (default expansion logic)
 	bestDir := player.CurrentDirection
 	minDistToClaimed := math.MaxInt32
 
@@ -101,10 +111,12 @@ func (s *DefaultStrategy) getNextBestDirection(player *Player, gm *GameManager) 
 			dist = getManhattanDistance(tile, nearestClaimedTile)
 		}
 
+		// Prefer continuing in the same direction (inertia)
 		if dir.Dx == player.CurrentDirection.Dx && dir.Dy == player.CurrentDirection.Dy {
 			dist -= 2
 		}
 
+		// Avoid expanding too far from the center if the tail is long
 		if len(player.Tail) > 5 {
 			distToCenter := getManhattanDistance(tile, centerTile)
 			currentDistToCenter := getManhattanDistance(currentTile, centerTile)
@@ -177,6 +189,7 @@ func (s *DefaultStrategy) getSafestFleeDirection(player *Player, gm *GameManager
 	bestFleeDir := player.CurrentDirection
 	maxOpponentDistance := -1
 
+	// Initialize best direction with the first valid move
 	for dir := range validMoves {
 		bestFleeDir = dir
 		break
@@ -192,6 +205,7 @@ func (s *DefaultStrategy) getSafestFleeDirection(player *Player, gm *GameManager
 			maxOpponentDistance = distToOpponent
 			bestFleeDir = dir
 		} else if distToOpponent == maxOpponentDistance {
+			// Tiebreaker: choose the one closest to our claimed territory
 			if nearestClaimedTile != nil {
 				distToBase := getManhattanDistance(tile, nearestClaimedTile)
 				if distToBase < minBaseDistance {
@@ -211,6 +225,7 @@ func (s *DefaultStrategy) getBestExpansionDirection(player *Player, gm *GameMana
 
 	nearestClaimedTile := s.findNearestClaimedTile(player.Location, player.Color, gm)
 
+	// Initialize best direction with the first valid move
 	for dir := range validMoves {
 		bestDir = dir
 		break
@@ -251,17 +266,22 @@ func (s *DefaultStrategy) findNearestOpponentHead(player *Player, gm *GameManage
 	minDist := math.MaxInt32
 	var nearestHead *Tile
 
-	for _, otherPlayer := range gm.Players {
-		if otherPlayer == nil || otherPlayer.Color == player.Color {
-			continue
-		}
+	gm.Players.Range(func(key, value interface{}) bool {
+		if otherPlayer, ok := value.(*Player); ok && otherPlayer != nil {
+			// Compare map key (int color)
+			if key.(int) == *player.Color {
+				return true // Skip current player
+			}
 
-		dist := getManhattanDistance(player.Location, otherPlayer.Location)
-		if dist < minDist {
-			minDist = dist
-			nearestHead = otherPlayer.Location
+			dist := getManhattanDistance(player.Location, otherPlayer.Location)
+			if dist < minDist {
+				minDist = dist
+				nearestHead = otherPlayer.Location
+			}
 		}
-	}
+		return true // Continue iteration
+	})
+
 	return nearestHead
 }
 
@@ -272,26 +292,30 @@ func (s *DefaultStrategy) calculateThreatScore(player *Player, gm *GameManager) 
 	}
 
 	totalThreat := 0
-	for _, otherPlayer := range gm.Players {
-		if otherPlayer == nil || otherPlayer.Color == player.Color {
-			continue
-		}
+	gm.Players.Range(func(key, value interface{}) bool {
+		if otherPlayer, ok := value.(*Player); ok && otherPlayer != nil {
+			// Compare map key (int color)
+			if key.(int) == *player.Color {
+				return true // Skip current player
+			}
 
-		opponentHead := otherPlayer.Location
+			opponentHead := otherPlayer.Location
 
-		minDistToTail := math.MaxInt32
-		for _, tailTile := range player.Tail {
-			dist := getManhattanDistance(opponentHead, tailTile)
-			if dist < minDistToTail {
-				minDistToTail = dist
+			minDistToTail := math.MaxInt32
+			for _, tailTile := range player.Tail {
+				dist := getManhattanDistance(opponentHead, tailTile)
+				if dist < minDistToTail {
+					minDistToTail = dist
+				}
+			}
+
+			if minDistToTail <= 3 {
+				threatFactor := 4 - minDistToTail
+				totalThreat += 500 * threatFactor
 			}
 		}
-
-		if minDistToTail <= 3 {
-			threatFactor := 4 - minDistToTail
-			totalThreat += 500 * threatFactor
-		}
-	}
+		return true // Continue iteration
+	})
 
 	return totalThreat
 }
