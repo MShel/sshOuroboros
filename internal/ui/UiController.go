@@ -71,15 +71,15 @@ func (m ControllerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case SetupSubmitMsg:
 		// 2. Transition to the next screen
 		m.CurrentScreen = GameScreen
-		_, conversionErr := strconv.Atoi(msg.Color)
+		color, conversionErr := strconv.Atoi(msg.Color)
 		if conversionErr != nil {
 			// no need to panic
 			panic(conversionErr)
 		}
 
-		m.GameManager.CreateNewPlayer(msg.Name, 0)
+		m.GameManager.CreateNewPlayer(msg.Name, color)
 		m.GameModel = NewGameModel(m.GameManager)
-
+		m.GameManager.CurrentPlayerColor = color
 		go m.GameManager.StartGameLoop()
 
 		return m, m.GameModel.Init()

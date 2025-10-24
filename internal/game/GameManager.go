@@ -4,7 +4,7 @@ import (
 	"context"
 	"log"
 	"math"
-	"sync" // sync.Map is included here
+	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -53,9 +53,9 @@ func GetNewGameManager() *GameManager {
 	gameContex, cancel := context.WithCancel(context.Background()) // Create cancellable context
 
 	singletonGameManager = &GameManager{
-		DirectionChannel:     make(chan Direction, 256),
-		UpdateChannel:        make(chan tea.Msg, 256),
-		SunsetPlayersChannel: make(chan *Player, 256),
+		DirectionChannel:     make(chan Direction, 512),
+		UpdateChannel:        make(chan tea.Msg, 512),
+		SunsetPlayersChannel: make(chan *Player, 512),
 		IsRunning:            false,
 		cancelContext:        cancel, // Store the cancel function
 		GameContext:          gameContex,
@@ -76,7 +76,7 @@ func (gm *GameManager) StartGameLoop() {
 	}
 	gm.IsRunning = true
 	duration := 100 * time.Millisecond
-	sunsetWorkersCount := 40
+	sunsetWorkersCount := 30
 	for w := 1; w <= sunsetWorkersCount; w++ {
 		go gm.sunsetPlayersWorker()
 	}
@@ -148,7 +148,6 @@ func (gm *GameManager) processGameTick() {
 		if gm.isOtherPlayerTail(nextTile, player.Color) {
 
 			var otherPlayer *Player
-			// Replaced manual locking and map access with sync.Map.Load
 			if nextTile.OwnerColor != nil {
 				if p, ok := gm.Players.Load(*nextTile.OwnerColor); ok {
 					if op, ok := p.(*Player); ok {
@@ -451,6 +450,8 @@ func (gm *GameManager) sunsetPlayer(player *Player) {
 			}
 		}
 	}
+	player.Location.IsTail = false
+	player.Location.OwnerColor = nil
 	// Use Delete to remove the player from the sync.Map
 	gm.Players.Delete(*player.Color)
 }

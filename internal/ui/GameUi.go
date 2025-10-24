@@ -84,9 +84,9 @@ func (m GameModel) View() string {
 	var mapView strings.Builder
 
 	mapView.WriteString(time.Now().String() + fmt.Sprintf(" | Tick: %d\n", m.TickCount))
-
+	m.gameManager.MapMutex.Lock()
 	gameMap := m.gameManager.GameMap
-
+	m.gameManager.MapMutex.Unlock()
 	//viewportSize := 200
 	//feedSize := max(viewportSize-m.ScreenWidth, 20)
 	//player := m.gameManager.Players[m.gameManager.CurrentPlayerColor]

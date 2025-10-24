@@ -35,7 +35,7 @@ func (bm *BotMaster) StartBotFleet() {
 	}
 
 	bm.IsRunning = true
-	duration := 120 * time.Millisecond
+	duration := 200 * time.Millisecond
 	ticker := time.NewTicker(duration)
 	defer ticker.Stop()
 
@@ -74,7 +74,7 @@ func (bm *BotMaster) updateBotLocation(bot *Bot) {
 
 func (bm *BotMaster) processBots() {
 	for _, bot := range bm.ControlledPlayers {
-		if bot == nil {
+		if bot.Player == nil {
 			continue
 		}
 
