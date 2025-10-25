@@ -10,11 +10,11 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func main() {
+func mainWithoutServer() {
 	gameManager := game.GetNewGameManager()
 
 	botMaster := game.NewBotMaster(gameManager, gameManager.GameContext)
-	for i := range 256 {
+	for i := range 10 {
 		botPlayer := gameManager.CreateNewPlayer("derp "+strconv.Itoa(i), i+1)
 		botMaster.ControlledPlayers[*botPlayer.Color] = &game.Bot{Player: botPlayer, BotStrategy: game.AgresssorStrategy}
 	}
@@ -28,7 +28,7 @@ func main() {
 	}
 	defer f.Close()
 
-	p := tea.NewProgram(ui.NewControllerModel(gameManager), tea.WithAltScreen())
+	p := tea.NewProgram(ui.NewControllerModel(gameManager, 0, 0), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("error %v", err)
 		os.Exit(1)

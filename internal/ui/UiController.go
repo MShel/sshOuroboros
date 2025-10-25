@@ -21,7 +21,7 @@ type ControllerModel struct {
 	GameModel     tea.Model
 }
 
-func NewControllerModel(gameManager *game.GameManager) ControllerModel {
+func NewControllerModel(gameManager *game.GameManager, screenWidth int, screenHeight int) ControllerModel {
 	return ControllerModel{
 		GameManager:   gameManager,
 		CurrentScreen: SetupScreen,
