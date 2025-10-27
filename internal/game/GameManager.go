@@ -54,14 +54,14 @@ func GetNewGameManager() *GameManager {
 	gameContex, cancel := context.WithCancel(context.Background()) // Create cancellable context
 
 	singletonGameManager = &GameManager{
-		DirectionChannel:     make(chan Direction, 1024),
-		SunsetPlayersChannel: make(chan *Player, 1024),
+		DirectionChannel:     make(chan Direction, 256),
+		SunsetPlayersChannel: make(chan *Player, 256),
 		IsRunning:            false,
 		cancelContext:        cancel,
 		GameContext:          gameContex,
 	}
 	singletonGameManager.GameMap = getInitGameMap()
-	singletonGameManager.intializeBotControledPlayers(256)
+	singletonGameManager.intializeBotControledPlayers(2)
 
 	return singletonGameManager
 }
