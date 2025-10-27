@@ -1,35 +1,46 @@
 package game
 
-import "math/rand"
+import (
+	"math/rand"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/ssh"
+)
 
 type Player struct {
-	Name                                           string
-	Color                                          *int
-	ClaimedEstate                                  int
-	Location                                       *Tile
-	Tail                                           []*Tile
-	MaxTailRow, MinTailRow, MaxTailCol, MinTailCol int
-	CurrentDirection                               Direction
+	Name          string
+	SshSession    ssh.Session
+	Color         *int
+	ClaimedEstate int
+	Location      *Tile
+	Tail          []*Tile
+	// that might contain tiles that are not theirs anymore TODO use that instead of scanning the map
+	AllPlayerTiles   []*Tile
+	CurrentDirection Direction
+	UpdateChannel    chan tea.Msg
+	BotStrategy      Strategy
 }
 
-func CreateNewPlayer(name string, color int, spawnPoint *Tile) *Player {
+func CreateNewPlayer(sshSession ssh.Session, name string, color int, spawnPoint *Tile) *Player {
 	spawnPoint.OwnerColor = &color
 	spawnPoint.IsTail = true
 	possibleDirections := []Direction{
-		Direction{Dx: 1, Dy: 0},
-		Direction{Dx: 0, Dy: 1},
-		Direction{Dx: -1, Dy: 0},
-		Direction{Dx: 0, Dy: -1},
+		{Dx: 1, Dy: 0},
+		{Dx: 0, Dy: 1},
+		{Dx: -1, Dy: 0},
+		{Dx: 0, Dy: -1},
 	}
 
 	return &Player{
 		Name:             name,
 		Color:            &color,
+		SshSession:       sshSession,
 		Location:         spawnPoint,
 		CurrentDirection: possibleDirections[rand.Intn(len(possibleDirections))],
 		Tail: []*Tile{
 			spawnPoint,
 		},
+		UpdateChannel: make(chan tea.Msg, 16),
 	}
 }
 
@@ -56,10 +67,6 @@ func (p *Player) GetNextTile() *Tile {
 }
 
 func (p *Player) resetTailData() {
-	p.MaxTailRow = 0
-	p.MinTailRow = MapRowCount
-	p.MaxTailCol = 0
-	p.MinTailCol = MapColCount
 	p.Tail = []*Tile{}
 }
 

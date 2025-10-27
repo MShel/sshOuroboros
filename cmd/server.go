@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	host string = "localhost"
+	host string = "0.0.0.0"
 	port string = "6996"
 )
 
@@ -40,7 +40,6 @@ func main() {
 	if serverCreateErr != nil {
 		log.Error("Failed to start ssh server", "error", serverCreateErr)
 	}
-
 	serverDoneChannel := make(chan os.Signal, 1)
 	// Captturing system signal to kill server
 	signal.Notify(serverDoneChannel, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
@@ -62,10 +61,10 @@ func main() {
 	}
 }
 
-func viewHandler(s ssh.Session) (tea.Model, []tea.ProgramOption) {
-	pty, _, _ := s.Pty()
+func viewHandler(sshSession ssh.Session) (tea.Model, []tea.ProgramOption) {
+	pty, _, _ := sshSession.Pty()
 	gameManager := game.GetNewGameManager()
-	controllerModel := ui.NewControllerModel(gameManager, pty.Window.Width, pty.Window.Height)
+	controllerModel := ui.NewControllerModel(gameManager, sshSession, pty.Window.Width, pty.Window.Height)
 
 	return controllerModel, []tea.ProgramOption{tea.WithAltScreen()}
 }

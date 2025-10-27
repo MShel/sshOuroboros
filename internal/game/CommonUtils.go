@@ -14,3 +14,5 @@ func getManhattanDistance(t1, t2 *Tile) int {
 	dy := math.Abs(float64(t1.Y - t2.Y))
 	return int(dx + dy)
 }
+
+var systemColors = map[int]string{237: "WALL", 235: "void"}

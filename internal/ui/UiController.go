@@ -5,28 +5,35 @@ import (
 
 	"github.com/Mshel/sshnake/internal/game"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/ssh"
 )
 
 type Screen int
 
 const (
-	SetupScreen Screen = iota // 0: The initial form (your current UI)
-	GameScreen                // 1: The main game viewport, score, etc.
+	SetupScreen Screen = iota
+	GameScreen
 )
 
 type ControllerModel struct {
-	CurrentScreen Screen
-	GameManager   *game.GameManager
-	SetupModel    tea.Model
-	GameModel     tea.Model
+	CurrentScreen      Screen
+	GameManager        *game.GameManager
+	SetupModel         tea.Model
+	GameModel          tea.Model
+	CurrentUserSession ssh.Session
+	ScreenWidth        int
+	ScreenHeight       int
 }
 
-func NewControllerModel(gameManager *game.GameManager, screenWidth int, screenHeight int) ControllerModel {
+func NewControllerModel(gameManager *game.GameManager, userSession ssh.Session, screenWidth int, screenHeight int) ControllerModel {
 	return ControllerModel{
-		GameManager:   gameManager,
-		CurrentScreen: SetupScreen,
-		SetupModel:    NewInitialSetupModel(gameManager),
-		GameModel:     NewGameModel(gameManager), // GameModel is initialized only upon submission
+		GameManager:        gameManager,
+		CurrentScreen:      SetupScreen,
+		SetupModel:         NewInitialSetupModel(gameManager),
+		GameModel:          nil,
+		CurrentUserSession: userSession,
+		ScreenWidth:        screenWidth,
+		ScreenHeight:       screenHeight,
 	}
 }
 
@@ -50,42 +57,36 @@ func (m ControllerModel) View() string {
 	}
 }
 
-// Custom message to carry the submitted data from the setup screen.
 type SetupSubmitMsg struct {
 	Name  string
 	Color string
 }
 
-// In ControllerModel's Update()
 func (m ControllerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		// Handle global keys (like Ctrl+C to quit from any screen)
 		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
 		}
 
 	case SetupSubmitMsg:
-		// 2. Transition to the next screen
 		m.CurrentScreen = GameScreen
 		color, conversionErr := strconv.Atoi(msg.Color)
 		if conversionErr != nil {
-			// no need to panic
 			panic(conversionErr)
 		}
 
-		m.GameManager.CreateNewPlayer(msg.Name, color)
-		m.GameModel = NewGameModel(m.GameManager)
-		m.GameManager.CurrentPlayerColor = color
+		m.GameManager.CreateNewPlayer(msg.Name, color, m.CurrentUserSession)
+		m.GameModel = NewGameModel(m.GameManager, m.CurrentUserSession, m.ScreenWidth, m.ScreenHeight)
+
 		go m.GameManager.StartGameLoop()
 
 		return m, m.GameModel.Init()
 	}
 
-	// Pass messages down to the active child model
 	switch m.CurrentScreen {
 	case SetupScreen:
 		m.SetupModel, cmd = m.SetupModel.Update(msg)
