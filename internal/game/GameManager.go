@@ -19,7 +19,9 @@ type Direction struct {
 
 type GameTickMsg struct{}
 type PlayerDeadMsg struct {
-	PlayerColor int
+	PlayerColor        int
+	FinalClaimedEstate int
+	FinalKills         int
 }
 
 // players estate is recalculated every time for all players once any of them claim any new estate
@@ -30,11 +32,13 @@ type ClaimedEstateMsg struct {
 type GameManager struct {
 	// Players is now a sync.Map for concurrent access, mapping int (color) to *Player.
 	// This replaces the map[int]*Player and the PlayersMutex.
-	Players              sync.Map
-	SessionsToPlayers    sync.Map
-	GameMap              [][]*Tile
+	Players           sync.Map
+	SessionsToPlayers sync.Map
+	GameMap           [][]*Tile
+
 	DirectionChannel     chan Direction
 	SunsetPlayersChannel chan *Player
+	PlayerRebirth        chan int
 
 	IsRunning     bool
 	MapMutex      sync.RWMutex
@@ -56,12 +60,12 @@ func GetNewGameManager() *GameManager {
 	singletonGameManager = &GameManager{
 		DirectionChannel:     make(chan Direction, 256),
 		SunsetPlayersChannel: make(chan *Player, 256),
+		PlayerRebirth:        make(chan int),
 		IsRunning:            false,
 		cancelContext:        cancel,
 		GameContext:          gameContex,
 	}
 	singletonGameManager.GameMap = getInitGameMap()
-	singletonGameManager.intializeBotControledPlayers(2)
 
 	return singletonGameManager
 }
@@ -85,9 +89,15 @@ func (gm *GameManager) StartGameLoop() {
 	}
 	gm.IsRunning = true
 	duration := 100 * time.Millisecond
-	sunsetWorkersCount := 30
+	sunsetWorkersCount := 50
 	for w := 1; w <= sunsetWorkersCount; w++ {
 		go gm.sunsetPlayersWorker()
+	}
+	singletonGameManager.intializeBotControledPlayers(5)
+
+	rebirthWorkerCount := 1
+	for w := 1; w <= rebirthWorkerCount; w++ {
+		go gm.rebirthPlayersWorker()
 	}
 
 	ticker := time.NewTicker(duration)
@@ -128,8 +138,6 @@ func (gm *GameManager) processPlayerInput(dir Direction) {
 // processGameTick is called every GameTickDuration to move all players and check collisions.
 func (gm *GameManager) processGameTick() {
 
-	// Replaced manual locking and iteration with sync.Map.Range
-	//TODO Remove this  slice and use range directly
 	gm.Players.Range(func(key, value interface{}) bool {
 		if player, ok := value.(*Player); ok && player != nil {
 			if player == nil {
@@ -137,7 +145,7 @@ func (gm *GameManager) processGameTick() {
 			}
 
 			nextTile := player.GetNextTile()
-			if gm.isWall(nextTile.Y, nextTile.X) {
+			if gm.IsWall(nextTile.Y, nextTile.X) {
 				gm.SunsetPlayersChannel <- player
 				return true
 			}
@@ -155,7 +163,7 @@ func (gm *GameManager) processGameTick() {
 
 				if otherPlayer != nil {
 					gm.SunsetPlayersChannel <- otherPlayer
-
+					player.Kills += 1
 					nextTile.OwnerColor = player.Color
 					nextTile.IsTail = true
 					player.Tail = append(player.Tail, nextTile)
@@ -174,6 +182,7 @@ func (gm *GameManager) processGameTick() {
 			if nextTile.OwnerColor != player.Color {
 				nextTile.OwnerColor = player.Color
 				nextTile.IsTail = true
+				nextTile.Direction = player.CurrentDirection
 				player.Tail = append(player.Tail, nextTile)
 			}
 
@@ -196,6 +205,10 @@ func (gm *GameManager) processGameTick() {
 func (gm *GameManager) CreateNewPlayer(playerName string, playerColor int, userSession ssh.Session) *Player {
 	spawnTile := gm.getSpawnTile()
 	newPlayer := CreateNewPlayer(userSession, playerName, playerColor, spawnTile)
+	if player, ok := gm.Players.Load(playerColor); ok {
+		gm.sunsetPlayer(player.(*Player), false)
+	}
+
 	gm.Players.Store(playerColor, newPlayer)
 	gm.SessionsToPlayers.Store(userSession, newPlayer)
 
@@ -220,8 +233,8 @@ func (gm *GameManager) getSpawnTile() *Tile {
 	bestTile := gm.GameMap[MapRowCount/2][MapColCount/2]
 	maxMinDistance := -1 // Maximize the minimum distance to any player
 
-	for row := 1; row < MapRowCount-1; row++ {
-		for col := 1; col < MapColCount-1; col++ {
+	for row := 1; row < MapRowCount-5; row++ {
+		for col := 1; col < MapColCount-5; col++ {
 			currentTile := gm.GameMap[row][col]
 
 			if currentTile.OwnerColor != nil || currentTile.IsTail {
@@ -254,34 +267,58 @@ func (gm *GameManager) sunsetPlayersWorker() {
 			return
 		}
 		if player != nil {
-			gm.sunsetPlayer(player)
+			gm.sunsetPlayer(player, true)
 		}
 	}
 }
 
-func (gm *GameManager) sunsetPlayer(player *Player) {
-	// Only MapMutex is needed to protect the GameMap tiles.
-	gm.MapMutex.Lock()
-	defer gm.MapMutex.Unlock()
-	playerFinalClaimedLand := 0.0
-
-	for row := 1; row < MapRowCount-1; row++ {
-		for col := 1; col < MapColCount-1; col++ {
-			testTile := gm.GameMap[row][col]
-			if testTile.OwnerColor == player.Color {
-				playerFinalClaimedLand += 1.0
-				testTile.OwnerColor = nil
-				testTile.IsTail = false
-			}
+func (gm *GameManager) sunsetPlayer(player *Player, needRebirth bool) {
+	playerFinalClaimedLand := 0
+	for _, tile := range player.AllPlayerTiles {
+		if tile.OwnerColor == player.Color {
+			playerFinalClaimedLand += 1.0
+			tile.OwnerColor = nil
 		}
 	}
+	for _, tile := range player.Tail {
+		if tile.OwnerColor == player.Color {
+			tile.OwnerColor = nil
+		}
+	}
+
 	player.Location.IsTail = false
 	player.Location.OwnerColor = nil
-	// Use Delete to remove the player from the sync.Map
+
+	if player.SshSession != nil {
+		player.UpdateChannel <- PlayerDeadMsg{
+			PlayerColor:        *player.Color,
+			FinalClaimedEstate: playerFinalClaimedLand,
+			FinalKills:         player.Kills,
+		}
+	}
 	gm.Players.Delete(*player.Color)
+
+	if needRebirth {
+		gm.PlayerRebirth <- *player.Color
+	}
+
 }
 
-func (gm *GameManager) isWall(row int, col int) bool {
+func (gm *GameManager) rebirthPlayersWorker() {
+	for {
+		playerColorInt, ok := <-gm.PlayerRebirth
+		if !ok {
+			return
+		}
+		if playerColorInt != 0 {
+			botPlayer := CreateNewPlayer(nil, "derp"+strconv.Itoa(playerColorInt), playerColorInt, gm.getSpawnTile())
+			botPlayer.BotStrategy = defaultStrategy
+			gm.Players.Store(playerColorInt, botPlayer)
+		}
+	}
+}
+
+func (gm *GameManager) IsWall(row int, col int) bool {
 	if row <= 0 || col <= 0 {
 		return true
 	}
@@ -297,9 +334,10 @@ func (gm *GameManager) isOtherPlayerTail(tile *Tile, playerColor *int) bool {
 	return tile.IsTail && tile.OwnerColor != nil && playerColor != tile.OwnerColor
 }
 
+var defaultStrategy = &DefaultStrategy{}
+
 func (gm *GameManager) intializeBotControledPlayers(botCount int) {
-	defaultStrategy := &DefaultStrategy{}
-	for botId := 0; botId < botCount; botId++ {
+	for botId := 10; botId < 10+botCount; botId++ {
 		if _, ok := systemColors[botId]; ok {
 			continue
 		}

@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 )
 
-const maxConcurrentFillers = 25
+const maxConcurrentFillers = 50
 
 func (gm *GameManager) spaceFill(player *Player) {
 	semaphore := make(chan struct{}, maxConcurrentFillers)
@@ -20,7 +20,7 @@ func (gm *GameManager) spaceFill(player *Player) {
 	// Explore every tail segment
 	for tailPointer < len(player.Tail) && !tilesFound.Load() {
 		segment := player.Tail[tailPointer]
-		for _, dir := range directions {
+		for _, dir := range Directions {
 			if tilesFound.Load() {
 				break
 			}
@@ -57,16 +57,17 @@ func (gm *GameManager) spaceFill(player *Player) {
 		if len(mapOfTiles) > 1 {
 
 			for tile := range mapOfTiles {
+				player.AllPlayerTiles = append(player.AllPlayerTiles, tile)
 				gm.GameMap[tile.Y][tile.X].OwnerColor = player.Color
 				gm.GameMap[tile.Y][tile.X].IsTail = false
 			}
 		}
-
 	}
 
-	// Mark the tail as no longer tail
 	for _, tile := range player.Tail {
-		tile.IsTail = false
+		player.AllPlayerTiles = append(player.AllPlayerTiles, tile)
+		gm.GameMap[tile.Y][tile.X].OwnerColor = player.Color
+		gm.GameMap[tile.Y][tile.X].IsTail = false
 	}
 }
 
@@ -95,13 +96,13 @@ func (gm *GameManager) getTilesToBeFilled(
 		testTile := gm.GameMap[testCoord.Y][testCoord.X]
 		mapOfTilesToIgnore[testTile] = true
 
-		for _, dir := range directions {
+		for _, dir := range Directions {
 			if tilesFound.Load() {
 				return
 			}
 
 			testRow, testCol := testTile.Y+dir[0], testTile.X+dir[1]
-			if gm.isWall(testRow, testCol) {
+			if gm.IsWall(testRow, testCol) {
 				return
 			}
 

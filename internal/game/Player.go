@@ -19,6 +19,7 @@ type Player struct {
 	CurrentDirection Direction
 	UpdateChannel    chan tea.Msg
 	BotStrategy      Strategy
+	Kills            int
 }
 
 func CreateNewPlayer(sshSession ssh.Session, name string, color int, spawnPoint *Tile) *Player {
@@ -41,6 +42,7 @@ func CreateNewPlayer(sshSession ssh.Session, name string, color int, spawnPoint 
 			spawnPoint,
 		},
 		UpdateChannel: make(chan tea.Msg, 16),
+		Kills:         0,
 	}
 }
 

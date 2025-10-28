@@ -64,6 +64,7 @@ func main() {
 func viewHandler(sshSession ssh.Session) (tea.Model, []tea.ProgramOption) {
 	pty, _, _ := sshSession.Pty()
 	gameManager := game.GetNewGameManager()
+	go gameManager.StartGameLoop()
 	controllerModel := ui.NewControllerModel(gameManager, sshSession, pty.Window.Width, pty.Window.Height)
 
 	return controllerModel, []tea.ProgramOption{tea.WithAltScreen()}

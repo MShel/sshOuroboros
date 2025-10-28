@@ -51,13 +51,13 @@ type SetupModel struct {
 	focusIndex int // 0: Name, 1: Color Select, 2: Submit/Quit
 	submitted  bool
 	width      int // Terminal width for wrapping
+	height     int // Terminal height
 	tea.Model
 }
 
-// Initial state setup
-func NewInitialSetupModel(gameManager *game.GameManager) SetupModel {
+func NewInitialSetupModel(gameManager *game.GameManager, w, h int) SetupModel {
 	ti := textinput.New()
-	ti.Placeholder = "Your Shhnake Name"
+	ti.Placeholder = "Your Orboros Name"
 	ti.Focus()
 	ti.CharLimit = 20
 	ti.Width = 200
@@ -69,6 +69,8 @@ func NewInitialSetupModel(gameManager *game.GameManager) SetupModel {
 		colorIndex: 0,
 		focusIndex: 0,
 		submitted:  false,
+		width:      w, // FIX: Initialize width
+		height:     h, // Initialize height
 	}
 }
 
@@ -82,6 +84,7 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
+		m.height = msg.Height
 		return m, nil
 
 	case tea.KeyMsg:
@@ -135,6 +138,8 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// 3. Handle Color Selection Navigation (Arrows, only when focused on colors)
 		if m.focusIndex == 1 {
+			var keyConsumed bool
+
 			// Calculate swatches per line (2 columns per swatch: 1 for block, 1 for small visual space/margin)
 			swatchesPerLine := (m.width - 2) / 2
 			if swatchesPerLine < 1 {
@@ -144,12 +149,21 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch s {
 			case "up":
 				m.colorIndex = (m.colorIndex - swatchesPerLine + len(colorOptions)) % len(colorOptions)
+				keyConsumed = true
 			case "down":
 				m.colorIndex = (m.colorIndex + swatchesPerLine) % len(colorOptions)
+				keyConsumed = true
 			case "left":
 				m.colorIndex = (m.colorIndex - 1 + len(colorOptions)) % len(colorOptions)
+				keyConsumed = true
 			case "right":
 				m.colorIndex = (m.colorIndex + 1) % len(colorOptions)
+				keyConsumed = true
+			}
+
+			// If a directional key was pressed, the event is consumed, and we must return.
+			if keyConsumed {
+				return m, nil
 			}
 		}
 
@@ -177,12 +191,12 @@ func (m SetupModel) View() string {
 			Align(lipgloss.Center).
 			Render(lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Render(selectedColorCode))
 
-		return fmt.Sprintf(
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, fmt.Sprintf(
 			"✅ Form Submitted!\n\nName: %s\nColor Code: %s\n\n%s\n\n",
 			m.nameInput.Value(),
 			selectedColorCode,
 			colorBlock,
-		)
+		))
 	}
 
 	var b strings.Builder
@@ -198,6 +212,7 @@ func (m SetupModel) View() string {
 	}
 	b.WriteString("\n")
 
+	// FIX: This calculation now uses the initialized width
 	swatchesPerLine := (m.width - 2) / 2
 	if swatchesPerLine < 1 {
 		swatchesPerLine = 1
@@ -241,5 +256,6 @@ func (m SetupModel) View() string {
 	// --- Help Text ---
 	b.WriteString(helpStyle.Render("(arrows to select color, tab/shift+tab to navigate, enter to confirm, ctrl+c to quit)"))
 
-	return b.String()
+	// Center the content using the correct width/height
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, b.String())
 }

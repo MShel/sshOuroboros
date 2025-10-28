@@ -13,7 +13,7 @@ func (s *DefaultStrategy) getNextBestDirection(player *Player, gm *GameManager) 
 	validMoves := make(map[Direction]*Tile)
 
 	// --- 1. Filter and Collect All Valid Moves (Wall and Collision Avoidance) ---
-	for _, dirCoords := range directions {
+	for _, dirCoords := range Directions {
 		dx, dy := dirCoords[1], dirCoords[0]
 		nextX := currentTile.X + dx
 		nextY := currentTile.Y + dy
@@ -26,7 +26,7 @@ func (s *DefaultStrategy) getNextBestDirection(player *Player, gm *GameManager) 
 		}
 
 		// Wall check
-		if gm.isWall(nextY, nextX) {
+		if gm.IsWall(nextY, nextX) {
 			continue
 		}
 
@@ -158,11 +158,11 @@ func (s *DefaultStrategy) findNearestClaimedTile(start *Tile, playerColor *int, 
 			return current
 		}
 
-		for _, dirCoords := range directions {
+		for _, dirCoords := range Directions {
 			dx, dy := dirCoords[1], dirCoords[0]
 			nextRow, nextCol := current.Y+dy, current.X+dx
 
-			if gm.isWall(nextRow, nextCol) {
+			if gm.IsWall(nextRow, nextCol) {
 				continue
 			}
 

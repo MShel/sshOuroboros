@@ -5,6 +5,7 @@ type Tile struct {
 	IsTail     bool
 	X          int
 	Y          int
+	Direction  Direction
 }
 
 func CreateNewTile(row int, col int) *Tile {
@@ -13,6 +14,7 @@ func CreateNewTile(row int, col int) *Tile {
 		Y:          row,
 		OwnerColor: nil,
 		IsTail:     false,
+		Direction:  Direction{},
 	}
 }
 

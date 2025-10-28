@@ -2,7 +2,7 @@ package game
 
 import "math"
 
-var directions = [][]int{
+var Directions = [][]int{
 	{1, 0},
 	{0, 1},
 	{-1, 0},
