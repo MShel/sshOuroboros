@@ -86,11 +86,12 @@ func (m ControllerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// --- 2. State Transition Message Handling ---
 	switch msg := msg.(type) {
 	case IntroSubmitMsg:
-		if msg == 0 {
+		switch msg {
+		case 0:
 			// Start Registration
 			m.CurrentScreen = SetupScreen
 			return m, m.SetupModel.Init()
-		} else if msg == 1 {
+		case 1:
 			// View Leaderboard
 			m.CurrentScreen = GameScreen
 			m.GameModel = NewGameModel(m.GameManager, nil, m.ScreenWidth, m.ScreenHeight)

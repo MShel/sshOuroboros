@@ -5,78 +5,91 @@ import (
 	"sync/atomic"
 )
 
-const maxConcurrentFillers = 50
+type SpaceFiller struct {
+	SpaceFillerChan chan *Player
+	GameMap         [][]*Tile
+}
 
-func (gm *GameManager) spaceFill(player *Player) {
-	semaphore := make(chan struct{}, maxConcurrentFillers)
-	resultsChannel := make(chan map[*Tile]interface{}, maxConcurrentFillers) // buffered to avoid blocking
-	var tilesFound atomic.Bool                                               // Declare an atomic.Bool variable
+var spaceFiller *SpaceFiller
 
-	// Set the flag initially to false
-	tilesFound.Store(false)
-
-	tailPointer := 0
-	var wg sync.WaitGroup
-	// Explore every tail segment
-	for tailPointer < len(player.Tail) && !tilesFound.Load() {
-		segment := player.Tail[tailPointer]
-		for _, dir := range Directions {
-			if tilesFound.Load() {
-				break
-			}
-
-			testRow, testCol := segment.Y+dir[0], segment.X+dir[1]
-			testTile := gm.GameMap[testRow][testCol]
-
-			if testTile.OwnerColor != player.Color {
-				if tilesFound.Load() {
-					break
-				}
-
-				semaphore <- struct{}{}
-				wg.Add(1)
-
-				go func(tt *Tile) {
-					defer wg.Done()
-					defer func() { <-semaphore }()
-
-					gm.getTilesToBeFilled(tt, player.Color, resultsChannel, &tilesFound)
-				}(testTile)
-			}
-		}
-		tailPointer += 1
+func getNewSpaceFiller(gameMap [][]*Tile) *SpaceFiller {
+	if spaceFiller != nil {
+		return spaceFiller
 	}
 
-	// Wait for goroutines to finish and close channel
-	go func() {
-		wg.Wait()
-		close(resultsChannel)
-	}()
-
-	for mapOfTiles := range resultsChannel {
-		if len(mapOfTiles) > 1 {
-
-			for tile := range mapOfTiles {
-				player.AllPlayerTiles = append(player.AllPlayerTiles, tile)
-				gm.GameMap[tile.Y][tile.X].OwnerColor = player.Color
-				gm.GameMap[tile.Y][tile.X].IsTail = false
-			}
-		}
+	spaceFiller := SpaceFiller{
+		SpaceFillerChan: make(chan *Player),
+		GameMap:         gameMap,
 	}
 
-	for _, tile := range player.Tail {
-		player.AllPlayerTiles = append(player.AllPlayerTiles, tile)
-		gm.GameMap[tile.Y][tile.X].OwnerColor = player.Color
-		gm.GameMap[tile.Y][tile.X].IsTail = false
+	spaceFillerChannelWorkers := 100
+	for w := 0; w < spaceFillerChannelWorkers; w++ {
+		go spaceFiller.spaceFillWorker()
+	}
+
+	return &spaceFiller
+}
+
+func (spaceFillerInstance *SpaceFiller) spaceFillWorker() {
+	for {
+		player, ok := <-spaceFillerInstance.SpaceFillerChan
+		if !ok {
+			return
+		}
+
+		if player.isDead {
+			return
+		}
+
+		if player != nil && len(player.Tail) > 1 {
+			spaceFillerInstance.spaceFillFromTail(player.Tail)
+			player.resetTailData()
+		}
 	}
 }
 
-func (gm *GameManager) getTilesToBeFilled(
-	seed *Tile,
+func (sf *SpaceFiller) spaceFillFromTail(tail []*Tile) {
+	for _, segment := range tail {
+		segmentRow, segmentCol := segment.Y, segment.X
+
+		topTile, bottomTile, leftTile, rightTile := sf.GameMap[segmentRow-1][segmentCol],
+			sf.GameMap[segmentRow+1][segmentCol],
+			sf.GameMap[segmentRow][segmentCol-1],
+			sf.GameMap[segmentRow][segmentCol+1]
+
+		if topTile.OwnerColor != segment.OwnerColor &&
+			bottomTile.OwnerColor != segment.OwnerColor &&
+			!IsWall(topTile.Y, topTile.X) &&
+			!IsWall(bottomTile.Y, bottomTile.X) {
+			sf.fillWithSeeds(segment.OwnerColor, topTile, bottomTile)
+		} else if leftTile.OwnerColor != segment.OwnerColor &&
+			rightTile.OwnerColor != segment.OwnerColor &&
+			!IsWall(leftTile.Y, leftTile.X) &&
+			!IsWall(leftTile.Y, leftTile.X) {
+			sf.fillWithSeeds(segment.OwnerColor, topTile, bottomTile)
+		}
+
+		segment.IsTail = false
+	}
+}
+
+func (sf *SpaceFiller) fillWithSeeds(color *int, seedA *Tile, seedB *Tile) {
+	areaFound := &atomic.Bool{}
+	areaFound.Store(false)
+	wg := &sync.WaitGroup{}
+	wg.Add(2)
+	go sf.findAndFillTiles(color, seedA, wg, areaFound)
+	go sf.findAndFillTiles(color, seedB, wg, areaFound)
+	wg.Wait()
+}
+
+func (sf *SpaceFiller) findAndFillTiles(
 	playerColor *int,
-	resultsChan chan map[*Tile]interface{},
+	seed *Tile,
+	wg *sync.WaitGroup,
 	tilesFound *atomic.Bool,
 ) {
+	defer wg.Done()
 	if tilesFound.Load() {
 		return
 	}
@@ -88,12 +101,10 @@ func (gm *GameManager) getTilesToBeFilled(
 			return
 		}
 
-		// check cancellation *very* often for snappy shutdown
-
 		testCoord := q[0]
 		q = q[1:]
 
-		testTile := gm.GameMap[testCoord.Y][testCoord.X]
+		testTile := sf.GameMap[testCoord.Y][testCoord.X]
 		mapOfTilesToIgnore[testTile] = true
 
 		for _, dir := range Directions {
@@ -102,11 +113,11 @@ func (gm *GameManager) getTilesToBeFilled(
 			}
 
 			testRow, testCol := testTile.Y+dir[0], testTile.X+dir[1]
-			if gm.IsWall(testRow, testCol) {
+			if IsWall(testRow, testCol) {
 				return
 			}
 
-			nextTile := gm.GameMap[testRow][testCol]
+			nextTile := sf.GameMap[testRow][testCol]
 			if _, ok := mapOfTilesToIgnore[nextTile]; ok {
 				continue
 			}
@@ -120,10 +131,10 @@ func (gm *GameManager) getTilesToBeFilled(
 		}
 
 		if len(q) == 0 {
-			select {
-			case resultsChan <- mapOfTilesToIgnore:
-				tilesFound.Store(true)
-			default:
+			tilesFound.Store(true)
+			for tile := range mapOfTilesToIgnore {
+				tile.OwnerColor = playerColor
+				tile.IsTail = false
 			}
 		}
 	}

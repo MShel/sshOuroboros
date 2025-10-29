@@ -26,7 +26,7 @@ func (s *DefaultStrategy) getNextBestDirection(player *Player, gm *GameManager) 
 		}
 
 		// Wall check
-		if gm.IsWall(nextY, nextX) {
+		if IsWall(nextY, nextX) {
 			continue
 		}
 
@@ -108,7 +108,7 @@ func (s *DefaultStrategy) getNextBestDirection(player *Player, gm *GameManager) 
 		dist := math.MaxInt32
 
 		if nearestClaimedTile != nil {
-			dist = getManhattanDistance(tile, nearestClaimedTile)
+			dist = GetManhattanDistance(tile, nearestClaimedTile)
 		}
 
 		// Prefer continuing in the same direction (inertia)
@@ -118,8 +118,8 @@ func (s *DefaultStrategy) getNextBestDirection(player *Player, gm *GameManager) 
 
 		// Avoid expanding too far from the center if the tail is long
 		if len(player.Tail) > 5 {
-			distToCenter := getManhattanDistance(tile, centerTile)
-			currentDistToCenter := getManhattanDistance(currentTile, centerTile)
+			distToCenter := GetManhattanDistance(tile, centerTile)
+			currentDistToCenter := GetManhattanDistance(currentTile, centerTile)
 
 			if distToCenter > currentDistToCenter {
 				dist += 50
@@ -162,7 +162,7 @@ func (s *DefaultStrategy) findNearestClaimedTile(start *Tile, playerColor *int, 
 			dx, dy := dirCoords[1], dirCoords[0]
 			nextRow, nextCol := current.Y+dy, current.X+dx
 
-			if gm.IsWall(nextRow, nextCol) {
+			if IsWall(nextRow, nextCol) {
 				continue
 			}
 
@@ -199,7 +199,7 @@ func (s *DefaultStrategy) getSafestFleeDirection(player *Player, gm *GameManager
 	minBaseDistance := math.MaxInt32
 
 	for dir, tile := range validMoves {
-		distToOpponent := getManhattanDistance(tile, nearestOpponentHead)
+		distToOpponent := GetManhattanDistance(tile, nearestOpponentHead)
 
 		if distToOpponent > maxOpponentDistance {
 			maxOpponentDistance = distToOpponent
@@ -207,7 +207,7 @@ func (s *DefaultStrategy) getSafestFleeDirection(player *Player, gm *GameManager
 		} else if distToOpponent == maxOpponentDistance {
 			// Tiebreaker: choose the one closest to our claimed territory
 			if nearestClaimedTile != nil {
-				distToBase := getManhattanDistance(tile, nearestClaimedTile)
+				distToBase := GetManhattanDistance(tile, nearestClaimedTile)
 				if distToBase < minBaseDistance {
 					minBaseDistance = distToBase
 					bestFleeDir = dir
@@ -237,7 +237,7 @@ func (s *DefaultStrategy) getBestExpansionDirection(player *Player, gm *GameMana
 		dist := math.MaxInt32
 
 		if nearestClaimedTile != nil {
-			dist = getManhattanDistance(tile, nearestClaimedTile)
+			dist = GetManhattanDistance(tile, nearestClaimedTile)
 		}
 
 		if dir.Dx == player.CurrentDirection.Dx && dir.Dy == player.CurrentDirection.Dy {
@@ -245,8 +245,8 @@ func (s *DefaultStrategy) getBestExpansionDirection(player *Player, gm *GameMana
 		}
 
 		if len(player.Tail) > 15 {
-			distToCenter := getManhattanDistance(tile, centerTile)
-			currentDistToCenter := getManhattanDistance(player.Location, centerTile)
+			distToCenter := GetManhattanDistance(tile, centerTile)
+			currentDistToCenter := GetManhattanDistance(player.Location, centerTile)
 
 			if distToCenter > currentDistToCenter {
 				dist += 50
@@ -273,7 +273,7 @@ func (s *DefaultStrategy) findNearestOpponentHead(player *Player, gm *GameManage
 				return true // Skip current player
 			}
 
-			dist := getManhattanDistance(player.Location, otherPlayer.Location)
+			dist := GetManhattanDistance(player.Location, otherPlayer.Location)
 			if dist < minDist {
 				minDist = dist
 				nearestHead = otherPlayer.Location
@@ -303,7 +303,7 @@ func (s *DefaultStrategy) calculateThreatScore(player *Player, gm *GameManager) 
 
 			minDistToTail := math.MaxInt32
 			for _, tailTile := range player.Tail {
-				dist := getManhattanDistance(opponentHead, tailTile)
+				dist := GetManhattanDistance(opponentHead, tailTile)
 				if dist < minDistToTail {
 					minDistToTail = dist
 				}

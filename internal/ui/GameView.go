@@ -44,39 +44,12 @@ var (
 		{Dx: 1, Dy: 0}:  '▶', // Right
 	}
 
-	tailRunes = map[game.Direction]string{
-		{Dx: 0, Dy: -1}: "│", // Up
-		{Dx: 0, Dy: 1}:  "│", // Down
-		{Dx: -1, Dy: 0}: "─", // Left
-		{Dx: 1, Dy: 0}:  "─", // Right
-	}
-
-	cornerRunes = map[[2]game.Direction]string{
-		// Up -> Right | Right -> Up
-		{{Dx: 0, Dy: -1}, {Dx: 1, Dy: 0}}: "┘",
-		{{Dx: 1, Dy: 0}, {Dx: 0, Dy: -1}}: "┘",
-
-		// Up -> Left | Left -> Up
-		{{Dx: 0, Dy: -1}, {Dx: -1, Dy: 0}}: "└",
-		{{Dx: -1, Dy: 0}, {Dx: 0, Dy: -1}}: "└",
-
-		// Down -> Right | Right -> Down
-		{{Dx: 0, Dy: 1}, {Dx: 1, Dy: 0}}: "┐",
-		{{Dx: 1, Dy: 0}, {Dx: 0, Dy: 1}}: "┐",
-
-		// Down -> Left | Left -> Down
-		{{Dx: 0, Dy: 1}, {Dx: -1, Dy: 0}}: "┌",
-		{{Dx: -1, Dy: 0}, {Dx: 0, Dy: 1}}: "┌",
-	}
-
 	claimedEstateRune = "▒"
 )
 
 const (
 	mapViewPercentage  = 0.70
 	statusPanelPadding = 4
-	viewportWidth      = 80
-	viewportHeight     = 40
 )
 
 // --- GameViewModel Definition ---
@@ -156,14 +129,15 @@ func (m GameViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.gameOverState.SelectedButton = min(1, m.gameOverState.SelectedButton+1)
 				}
 			case "enter":
-				if m.gameState == StateGameOver {
+				switch m.gameState {
+				case StateGameOver:
 					// 0: Exit, 1: Leaderboard
 					if m.gameOverState.SelectedButton == 0 {
 						return m, tea.Quit
 					} else {
 						m.gameState = StateLeaderboard
 					}
-				} else if m.gameState == StateLeaderboard {
+				case StateLeaderboard:
 					// Pressing Enter on the leaderboard screen
 					if m.UserSession != nil {
 						// Player was in a game, go back to Game Over menu
@@ -267,8 +241,6 @@ func (m GameViewModel) View() string {
 	)
 }
 
-// ... renderMap, renderStatusPanel, listenForGameUpdates, max, min helpers (as before) ...
-
 // renderMap calculates the viewport around the player and draws the map.
 func (m GameViewModel) renderMap(currentPlayer *game.Player, width int, height int) string {
 	var sb strings.Builder
@@ -276,8 +248,8 @@ func (m GameViewModel) renderMap(currentPlayer *game.Player, width int, height i
 	centerTileX := currentPlayer.Location.X
 	centerTileY := currentPlayer.Location.Y
 
-	effectiveViewportW := min(viewportWidth, width)
-	effectiveViewportH := min(viewportHeight, height)
+	effectiveViewportW := min(int(float32(width)*mapViewPercentage), width)
+	effectiveViewportH := min(int(float32(height)*mapViewPercentage), height)
 
 	startCol := max(0, centerTileX-effectiveViewportW/2)
 	endCol := min(game.MapColCount, centerTileX+effectiveViewportW/2+1)
@@ -430,29 +402,6 @@ func (m GameViewModel) renderStatusPanel(currentPlayer *game.Player, width int) 
 		Estate int
 	}
 	var scores []PlayerScore
-	m.gameManager.Players.Range(func(key, value interface{}) bool {
-		player := value.(*game.Player)
-		if player != nil {
-			estate, found := m.EstateInfo[player.Color]
-			if !found {
-				estate = 0
-			}
-			scores = append(scores, PlayerScore{
-				Name:   player.Name,
-				Color:  *player.Color,
-				Estate: estate,
-			})
-		}
-		return true
-	})
-
-	for i := 0; i < len(scores)-1; i++ {
-		for j := i + 1; j < len(scores); j++ {
-			if scores[i].Estate < scores[j].Estate {
-				scores[i], scores[j] = scores[j], scores[i]
-			}
-		}
-	}
 
 	for i, score := range scores {
 		colorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(strconv.Itoa(score.Color)))
