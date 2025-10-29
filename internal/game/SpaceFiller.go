@@ -8,6 +8,7 @@ import (
 type SpaceFiller struct {
 	SpaceFillerChan chan *Player
 	GameMap         [][]*Tile
+	SpaceFillerWg   *sync.WaitGroup
 }
 
 var spaceFiller *SpaceFiller
@@ -20,9 +21,10 @@ func getNewSpaceFiller(gameMap [][]*Tile) *SpaceFiller {
 	spaceFiller := SpaceFiller{
 		SpaceFillerChan: make(chan *Player),
 		GameMap:         gameMap,
+		SpaceFillerWg:   &sync.WaitGroup{},
 	}
 
-	spaceFillerChannelWorkers := 100
+	spaceFillerChannelWorkers := 256
 	for w := 0; w < spaceFillerChannelWorkers; w++ {
 		go spaceFiller.spaceFillWorker()
 	}
@@ -41,15 +43,20 @@ func (spaceFillerInstance *SpaceFiller) spaceFillWorker() {
 			return
 		}
 
-		if player != nil && len(player.Tail) > 1 {
-			spaceFillerInstance.spaceFillFromTail(player.Tail)
+		if player != nil && len(player.Tail) > 0 {
+			spaceFillerInstance.SpaceFillerWg.Add(1)
+			spaceFillerInstance.spaceFillFromTail(player)
 			player.resetTailData()
 		}
 	}
 }
 
-func (sf *SpaceFiller) spaceFillFromTail(tail []*Tile) {
-	for _, segment := range tail {
+func (sf *SpaceFiller) spaceFillFromTail(player *Player) {
+	spaceFilled := false
+	defer sf.SpaceFillerWg.Done()
+
+	for i := (len(player.Tail) - 1); i >= 0; i-- {
+		segment := player.Tail[i]
 		segmentRow, segmentCol := segment.Y, segment.X
 
 		topTile, bottomTile, leftTile, rightTile := sf.GameMap[segmentRow-1][segmentCol],
@@ -57,34 +64,45 @@ func (sf *SpaceFiller) spaceFillFromTail(tail []*Tile) {
 			sf.GameMap[segmentRow][segmentCol-1],
 			sf.GameMap[segmentRow][segmentCol+1]
 
-		if topTile.OwnerColor != segment.OwnerColor &&
-			bottomTile.OwnerColor != segment.OwnerColor &&
-			!IsWall(topTile.Y, topTile.X) &&
-			!IsWall(bottomTile.Y, bottomTile.X) {
-			sf.fillWithSeeds(segment.OwnerColor, topTile, bottomTile)
-		} else if leftTile.OwnerColor != segment.OwnerColor &&
-			rightTile.OwnerColor != segment.OwnerColor &&
-			!IsWall(leftTile.Y, leftTile.X) &&
-			!IsWall(leftTile.Y, leftTile.X) {
-			sf.fillWithSeeds(segment.OwnerColor, topTile, bottomTile)
+		if !spaceFilled && player.Location != segment {
+			if topTile.OwnerColor != segment.OwnerColor &&
+				bottomTile.OwnerColor != segment.OwnerColor &&
+				leftTile.OwnerColor == segment.OwnerColor &&
+				rightTile.OwnerColor == segment.OwnerColor {
+				spaceFilled = true
+				sf.fillWithSeeds(player, topTile, bottomTile)
+			} else if leftTile.OwnerColor != segment.OwnerColor &&
+				rightTile.OwnerColor != segment.OwnerColor &&
+				bottomTile.OwnerColor == segment.OwnerColor &&
+				topTile.OwnerColor == segment.OwnerColor {
+				spaceFilled = true
+				sf.fillWithSeeds(player, leftTile, rightTile)
+			}
 		}
-
+		player.AllPlayerTiles = append(player.AllPlayerTiles, segment)
 		segment.IsTail = false
 	}
 }
 
-func (sf *SpaceFiller) fillWithSeeds(color *int, seedA *Tile, seedB *Tile) {
+func (sf *SpaceFiller) fillWithSeeds(player *Player, seedA *Tile, seedB *Tile) {
 	areaFound := &atomic.Bool{}
 	areaFound.Store(false)
 	wg := &sync.WaitGroup{}
-	wg.Add(2)
-	go sf.findAndFillTiles(color, seedA, wg, areaFound)
-	go sf.findAndFillTiles(color, seedB, wg, areaFound)
+	if !IsWall(seedA.Y, seedA.X) {
+		wg.Add(1)
+		go sf.findAndFillTiles(player, seedA, wg, areaFound)
+	}
+
+	if !IsWall(seedB.Y, seedB.X) {
+		wg.Add(1)
+		go sf.findAndFillTiles(player, seedB, wg, areaFound)
+	}
+
 	wg.Wait()
 }
 
 func (sf *SpaceFiller) findAndFillTiles(
-	playerColor *int,
+	player *Player,
 	seed *Tile,
 	wg *sync.WaitGroup,
 	tilesFound *atomic.Bool,
@@ -122,7 +140,7 @@ func (sf *SpaceFiller) findAndFillTiles(
 				continue
 			}
 
-			if nextTile.OwnerColor == playerColor {
+			if nextTile.OwnerColor == player.Color {
 				continue
 			}
 
@@ -130,11 +148,13 @@ func (sf *SpaceFiller) findAndFillTiles(
 			mapOfTilesToIgnore[nextTile] = true
 		}
 
-		if len(q) == 0 {
+		if len(q) == 0 && len(mapOfTilesToIgnore) > 1 {
 			tilesFound.Store(true)
+
 			for tile := range mapOfTilesToIgnore {
-				tile.OwnerColor = playerColor
+				tile.OwnerColor = player.Color
 				tile.IsTail = false
+				player.AllPlayerTiles = append(player.AllPlayerTiles, tile)
 			}
 		}
 	}

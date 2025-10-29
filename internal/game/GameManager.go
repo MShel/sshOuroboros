@@ -98,7 +98,7 @@ func (gm *GameManager) StartGameLoop() {
 	for w := 1; w <= sunsetWorkersCount; w++ {
 		go gm.sunsetPlayersWorker()
 	}
-	singletonGameManager.intializeBotControledPlayers(150)
+	singletonGameManager.intializeBotControledPlayers(250)
 
 	rebirthWorkerCount := 1
 	for w := 1; w <= rebirthWorkerCount; w++ {
@@ -143,7 +143,7 @@ func (gm *GameManager) processPlayerInput(dir Direction) {
 // processGameTick is called every GameTickDuration to move all players and check collisions.
 func (gm *GameManager) processGameTick() {
 	gm.BotStrategyWg.Wait()
-
+	gm.SpaceFillerService.SpaceFillerWg.Wait()
 	gm.Players.Range(func(key, value interface{}) bool {
 		if player, ok := value.(*Player); ok && player != nil {
 			if player == nil || player.isDead {

@@ -42,7 +42,7 @@ func CreateNewPlayer(sshSession ssh.Session, name string, color int, spawnPoint 
 		Tail: []*Tile{
 			spawnPoint,
 		},
-		UpdateChannel: make(chan tea.Msg, 16),
+		UpdateChannel: make(chan tea.Msg, 256),
 		Kills:         0,
 		isDead:        false,
 	}
