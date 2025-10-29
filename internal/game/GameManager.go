@@ -50,7 +50,7 @@ type GameManager struct {
 }
 
 var singletonGameManager *GameManager
-var MapColCount = 500
+var MapColCount = 700
 var MapRowCount = 500
 
 func GetNewGameManager() *GameManager {

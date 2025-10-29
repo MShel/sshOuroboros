@@ -24,6 +24,7 @@ const (
 )
 
 var (
+	voidColor    = "233"
 	mapViewStyle = lipgloss.NewStyle().
 			Border(lipgloss.DoubleBorder()).
 			BorderForeground(lipgloss.Color("240")).
@@ -34,8 +35,8 @@ var (
 				BorderForeground(lipgloss.Color("8")).
 				Padding(1, 2)
 
-	wallStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("237")).Render("█")
-	voidStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("235")).Render(" ")
+	wallStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("172")).Render("▒")
+	voidStyle = lipgloss.NewStyle().Background(lipgloss.Color(voidColor)).Render(" ")
 
 	headRunes = map[game.Direction]rune{
 		{Dx: 0, Dy: -1}: '▲', // Up
@@ -248,8 +249,8 @@ func (m GameViewModel) renderMap(currentPlayer *game.Player, width int, height i
 	centerTileX := currentPlayer.Location.X
 	centerTileY := currentPlayer.Location.Y
 
-	effectiveViewportW := min(int(float32(width)*mapViewPercentage), width)
-	effectiveViewportH := min(int(float32(height)*mapViewPercentage), height)
+	effectiveViewportW := min(game.MapColCount, width)
+	effectiveViewportH := min(game.MapRowCount, height)
 
 	startCol := max(0, centerTileX-effectiveViewportW/2)
 	endCol := min(game.MapColCount, centerTileX+effectiveViewportW/2+1)
@@ -275,10 +276,9 @@ func (m GameViewModel) renderMap(currentPlayer *game.Player, width int, height i
 				}
 			}
 
-			// 1. Draw Player Head
 			if tileOwner != nil && tile == tileOwner.Location {
 
-				colorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(strconv.Itoa(*tileOwner.Color))).Bold(true)
+				colorStyle := lipgloss.NewStyle().Background(lipgloss.Color(voidColor)).Foreground(lipgloss.Color(strconv.Itoa(*tileOwner.Color))).Bold(true)
 				sb.WriteString(colorStyle.Render(string(headRunes[game.Direction{Dx: tileOwner.CurrentDirection.Dx, Dy: tileOwner.CurrentDirection.Dy}])))
 
 				continue
@@ -286,7 +286,7 @@ func (m GameViewModel) renderMap(currentPlayer *game.Player, width int, height i
 
 			// 2. Draw Owned Tail/Estate
 			if tile.OwnerColor != nil {
-				colorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(strconv.Itoa(*tile.OwnerColor)))
+				colorStyle := lipgloss.NewStyle().Background(lipgloss.Color(voidColor)).Foreground(lipgloss.Color(strconv.Itoa(*tile.OwnerColor)))
 
 				if tile.IsTail {
 					// Determine which adjacent tail tiles belong to same owner.
@@ -417,7 +417,7 @@ func (m GameViewModel) renderStatusPanel(currentPlayer *game.Player, width int) 
 }
 
 func (m GameViewModel) listenForGameUpdates() tea.Cmd {
-	return tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
+	return tea.Tick(time.Millisecond*50, func(t time.Time) tea.Msg {
 		if m.UserSession == nil {
 			// If no session, still tick to keep the leaderboard/game running in the background
 			return game.GameTickMsg{}
