@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -108,8 +109,6 @@ func (m GameViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle Game Over or Leaderboard screen key presses
 		if m.gameState == StateGameOver || m.gameState == StateLeaderboard {
 			switch msg.String() {
-			case "q", "ctrl+c":
-				return m, tea.Quit
 			case "esc":
 				if m.gameState == StateLeaderboard {
 					// If viewing leaderboard from a game, go back to Game Over menu
@@ -200,7 +199,7 @@ func (m GameViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if *currentPlayer.Color == msg.PlayerColor {
 				log.Info("Current player died, showing Game Over screen.", "player", currentPlayer.Name)
 				m.gameState = StateGameOver
-				m.gameOverState.FinalEstate = msg.FinalClaimedEstate
+				m.gameOverState.FinalEstate = (msg.FinalClaimedEstate * 100) / float64(game.MapColCount*game.MapRowCount)
 				m.gameOverState.FinalKills = msg.FinalKills
 				m.gameOverState.SelectedButton = 0
 				return m, m.listenForGameUpdates()
@@ -223,8 +222,6 @@ func (m GameViewModel) View() string {
 
 	currentPlayerVal, ok := m.gameManager.SessionsToPlayers.Load(m.UserSession)
 	if !ok {
-		// Should only happen if the player died, but state wasn't updated,
-		// or if session is nil (from Intro) but state is Playing (which shouldn't happen)
 		return lipgloss.Place(m.ScreenWidth, m.ScreenHeight, lipgloss.Center, lipgloss.Center, "Waiting for game manager...")
 	}
 
@@ -241,8 +238,6 @@ func (m GameViewModel) View() string {
 		statusPanelStyle.Width(statusPanelWidth).Height(m.ScreenHeight).Render(statusContent),
 	)
 }
-
-// renderMap calculates the viewport around the player and draws the map.
 func (m GameViewModel) renderMap(currentPlayer *game.Player, width int, height int) string {
 	var sb strings.Builder
 
@@ -252,10 +247,25 @@ func (m GameViewModel) renderMap(currentPlayer *game.Player, width int, height i
 	effectiveViewportW := min(game.MapColCount, width)
 	effectiveViewportH := min(game.MapRowCount, height)
 
-	startCol := max(0, centerTileX-effectiveViewportW/2)
-	endCol := min(game.MapColCount, centerTileX+effectiveViewportW/2+1)
-	startRow := max(0, centerTileY-effectiveViewportH/2)
-	endRow := min(game.MapRowCount, centerTileY+effectiveViewportH/2+1)
+	desiredStartCol := centerTileX - effectiveViewportW/2
+
+	startCol := max(0, desiredStartCol)
+
+	if startCol+effectiveViewportW > game.MapColCount {
+		startCol = max(0, game.MapColCount-effectiveViewportW)
+	}
+
+	endCol := min(game.MapColCount, startCol+effectiveViewportW)
+
+	desiredStartRow := centerTileY - effectiveViewportH/2
+
+	startRow := max(0, desiredStartRow)
+
+	if startRow+effectiveViewportH > game.MapRowCount {
+		startRow = max(0, game.MapRowCount-effectiveViewportH)
+	}
+
+	endRow := min(game.MapRowCount, startRow+effectiveViewportH)
 
 	m.gameManager.MapMutex.RLock()
 	defer m.gameManager.MapMutex.RUnlock()
@@ -277,43 +287,35 @@ func (m GameViewModel) renderMap(currentPlayer *game.Player, width int, height i
 			}
 
 			if tileOwner != nil && tile == tileOwner.Location {
-
 				colorStyle := lipgloss.NewStyle().Background(lipgloss.Color(voidColor)).Foreground(lipgloss.Color(strconv.Itoa(*tileOwner.Color))).Bold(true)
 				sb.WriteString(colorStyle.Render(string(headRunes[game.Direction{Dx: tileOwner.CurrentDirection.Dx, Dy: tileOwner.CurrentDirection.Dy}])))
-
 				continue
 			}
 
-			// 2. Draw Owned Tail/Estate
 			if tile.OwnerColor != nil {
 				colorStyle := lipgloss.NewStyle().Background(lipgloss.Color(voidColor)).Foreground(lipgloss.Color(strconv.Itoa(*tile.OwnerColor)))
 
 				if tile.IsTail {
-					// Determine which adjacent tail tiles belong to same owner.
 					hasUp, hasDown, hasLeft, hasRight := false, false, false, false
 
-					// Up
 					if row-1 >= 0 {
 						n := m.gameManager.GameMap[row-1][col]
 						if n.IsTail && n.OwnerColor != nil && tile.OwnerColor != nil && *n.OwnerColor == *tile.OwnerColor {
 							hasUp = true
 						}
 					}
-					// Down
 					if row+1 < game.MapRowCount {
 						n := m.gameManager.GameMap[row+1][col]
 						if n.IsTail && n.OwnerColor != nil && tile.OwnerColor != nil && *n.OwnerColor == *tile.OwnerColor {
 							hasDown = true
 						}
 					}
-					// Left
 					if col-1 >= 0 {
 						n := m.gameManager.GameMap[row][col-1]
 						if n.IsTail && n.OwnerColor != nil && tile.OwnerColor != nil && *n.OwnerColor == *tile.OwnerColor {
 							hasLeft = true
 						}
 					}
-					// Right
 					if col+1 < game.MapColCount {
 						n := m.gameManager.GameMap[row][col+1]
 						if n.IsTail && n.OwnerColor != nil && tile.OwnerColor != nil && *n.OwnerColor == *tile.OwnerColor {
@@ -321,29 +323,21 @@ func (m GameViewModel) renderMap(currentPlayer *game.Player, width int, height i
 						}
 					}
 
-					// Choose rune:
 					var tailRune string
 
 					switch {
-					// Straight vertical (or single vertical neighbor)
 					case (hasUp && hasDown) || (hasUp && !hasLeft && !hasRight && !hasDown) || (hasDown && !hasLeft && !hasRight && !hasUp):
 						tailRune = "│"
-					// Straight horizontal (or single horizontal neighbor)
 					case (hasLeft && hasRight) || (hasLeft && !hasUp && !hasDown && !hasRight) || (hasRight && !hasUp && !hasDown && !hasLeft):
 						tailRune = "─"
-					// Up + Right => arms Up & Right
 					case hasUp && hasRight:
 						tailRune = "└"
-					// Up + Left => arms Up & Left
 					case hasUp && hasLeft:
 						tailRune = "┘"
-					// Down + Right => arms Down & Right
 					case hasDown && hasRight:
 						tailRune = "┌"
-					// Down + Left => arms Down & Left
 					case hasDown && hasLeft:
 						tailRune = "┐"
-					// Fallback (isolated or weird) — draw a small bullet
 					default:
 						tailRune = "•"
 					}
@@ -353,7 +347,6 @@ func (m GameViewModel) renderMap(currentPlayer *game.Player, width int, height i
 					sb.WriteString(colorStyle.Render(claimedEstateRune))
 				}
 			} else {
-				// 3. Draw Void/Empty space
 				sb.WriteString(voidStyle)
 			}
 		}
@@ -361,6 +354,7 @@ func (m GameViewModel) renderMap(currentPlayer *game.Player, width int, height i
 	}
 
 	renderedMap := sb.String()
+
 	paddedMap := lipgloss.NewStyle().Width(width).Height(height).Render(renderedMap)
 
 	return paddedMap
@@ -374,38 +368,54 @@ func (m GameViewModel) renderStatusPanel(currentPlayer *game.Player, width int) 
 	colorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(strconv.Itoa(*currentPlayer.Color)))
 	statusContent.WriteString(fmt.Sprintf("%s%s\n", colorStyle.Render("● "), currentPlayer.Name))
 
-	var currentKills int
+	claimedLand := currentPlayer.GetConsolidateTiles()
+	statusContent.WriteString(fmt.Sprintf("Kills: %d\n", currentPlayer.Kills))
+	statusContent.WriteString(fmt.Sprintf("Claimed: %.2f %% of land\n", claimedLand*100/float64(game.MapColCount*game.MapColCount)))
+	statusContent.WriteString(fmt.Sprintf("Direction: %c\n", headRunes[game.Direction{Dx: currentPlayer.CurrentDirection.Dx, Dy: currentPlayer.CurrentDirection.Dy}]))
+
+	statusContent.WriteString("\n" + lipgloss.NewStyle().Bold(true).Render("--- Leaderboard(TOP 10) ---") + "\n")
+
+	type PlayerScore struct {
+		Name  string
+		Color int
+		Land  float64
+	}
+	var playerScores []PlayerScore
+	botCount := 0
+	realPlayerCount := 0
+
+	// use that to calculate claimed area list for all players
+	// bot count
+	// real player count
 	m.gameManager.Players.Range(func(key, value interface{}) bool {
-		if otherPlayer, ok := value.(*game.Player); ok && *otherPlayer.Color == *currentPlayer.Color {
-			currentKills = otherPlayer.Kills
-			return false
+		player, _ := value.(*game.Player)
+		playerScores = append(playerScores, PlayerScore{
+			Name:  player.Name,
+			Color: *player.Color,
+			Land:  player.GetConsolidateTiles(),
+		})
+
+		if player.BotStrategy != nil {
+			botCount += 1
+		} else {
+			realPlayerCount += 1
 		}
 		return true
 	})
 
-	statusContent.WriteString(fmt.Sprintf("Kills: %d\n", currentKills))
+	sort.Slice(playerScores, func(i, j int) bool {
+		return playerScores[i].Land > playerScores[j].Land
+	})
 
-	estate, found := m.EstateInfo[currentPlayer.Color]
-	if !found {
-		estate = 0
-	}
-	statusContent.WriteString(fmt.Sprintf("Estate: %d tiles\n", estate))
+	statusContent.WriteString(fmt.Sprintf("PlayerCount: %d\n", realPlayerCount))
+	statusContent.WriteString(fmt.Sprintf("Bots count: %d\n", botCount))
 
-	statusContent.WriteString(fmt.Sprintf("Direction: %c\n", headRunes[currentPlayer.CurrentDirection]))
-	statusContent.WriteString(fmt.Sprintf("Game Tick: %d\n", m.TickCount))
+	playerScores = playerScores[:10]
 
-	statusContent.WriteString("\n" + lipgloss.NewStyle().Bold(true).Render("--- Leaderboard ---") + "\n")
-
-	type PlayerScore struct {
-		Name   string
-		Color  int
-		Estate int
-	}
-	var scores []PlayerScore
-
-	for i, score := range scores {
+	for i, score := range playerScores {
 		colorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(strconv.Itoa(score.Color)))
-		statusContent.WriteString(fmt.Sprintf("%d. %s%s: %d\n", i+1, colorStyle.Render("● "), score.Name, score.Estate))
+		statusContent.WriteString(fmt.Sprintf("%d. %s%s: %.2f %%\n", i+1, colorStyle.Render("● "), score.Name,
+			score.Land*100/float64(game.MapColCount*game.MapColCount)))
 	}
 
 	statusContent.WriteString("\n" + lipgloss.NewStyle().Bold(true).Render("--- Controls ---") + "\n")

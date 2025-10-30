@@ -41,9 +41,6 @@ func (m IntroModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			// Submit the selected option
 			return m, func() tea.Msg { return IntroSubmitMsg(m.selected) }
-		case "q", "ctrl+c":
-			// The Controller handles this globally now, but we keep it here as a fallback
-			return m, tea.Quit
 		}
 	}
 	return m, nil

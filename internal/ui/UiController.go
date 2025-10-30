@@ -78,7 +78,18 @@ func (m ControllerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// --- 1. Global Key Check (Check before the main switch) ---
 	if msg, ok := msg.(tea.KeyMsg); ok {
-		if msg.String() == "ctrl+c" || msg.String() == "q" {
+		if msg.String() == "ctrl+c" {
+
+			if m.CurrentUserSession != nil {
+				if anyPlayer, ok := m.GameManager.SessionsToPlayers.Load(m.CurrentUserSession); ok {
+					if anyPlayer != nil {
+						player := anyPlayer.(*game.Player)
+						m.GameManager.SessionsToPlayers.Delete(m.CurrentUserSession)
+						m.GameManager.SunsetPlayersChannel <- player
+					}
+				}
+			}
+
 			return m, tea.Quit
 		}
 	}

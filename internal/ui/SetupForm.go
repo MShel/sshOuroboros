@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -60,7 +59,6 @@ func NewInitialSetupModel(gameManager *game.GameManager, w, h int) SetupModel {
 	ti.Placeholder = "Your Orboros Name"
 	ti.Focus()
 	ti.CharLimit = 20
-	ti.Width = 200
 	ti.PromptStyle = focusedStyle
 	ti.TextStyle = focusedStyle
 
@@ -178,48 +176,32 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// View returns the string representation of the UI
 func (m SetupModel) View() string {
-	if m.submitted {
-		selectedColorCode := colorOptions[m.colorIndex]
-
-		// Render a large block of the selected color for confirmation
-		colorBlock := lipgloss.NewStyle().
-			Background(lipgloss.Color(selectedColorCode)).
-			Width(20).
-			Height(3).
-			Align(lipgloss.Center).
-			Render(lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Render(selectedColorCode))
-
-		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, fmt.Sprintf(
-			"✅ Form Submitted!\n\nName: %s\nColor Code: %s\n\n%s\n\n",
-			m.nameInput.Value(),
-			selectedColorCode,
-			colorBlock,
-		))
+	// Helper to center content within the terminal width
+	center := func(s string) string {
+		return lipgloss.NewStyle().Width(m.width).Align(lipgloss.Center).Render(s)
 	}
 
 	var b strings.Builder
 
-	b.WriteString(m.nameInput.View())
+	// Name Input
+	b.WriteString(center(m.nameInput.View()))
 	b.WriteString("\n\n")
 
-	snakeColorPrompt := "Select your sshnake color(use arrows)"
+	// Color Prompt
+	orborusColorPrompt := "Select your sshnake color(use arrows)"
+	var colorPrompt string
 	if m.focusIndex == 1 {
-		b.WriteString(focusedStyle.Render(snakeColorPrompt))
+		colorPrompt = focusedStyle.Render(orborusColorPrompt)
 	} else {
-		b.WriteString(blurredStyle.Render(snakeColorPrompt))
+		colorPrompt = blurredStyle.Render(orborusColorPrompt)
 	}
+	b.WriteString(center(colorPrompt))
 	b.WriteString("\n")
-
-	// FIX: This calculation now uses the initialized width
-	swatchesPerLine := (m.width - 2) / 2
-	if swatchesPerLine < 1 {
-		swatchesPerLine = 1
-	}
 
 	var colorSwatches strings.Builder
 	var selectedColorCode string
+	colorsPerLine := 100
 	for i, colorCode := range colorOptions {
 		style := colorSwatchStyle.
 			Background(lipgloss.Color(colorCode))
@@ -231,31 +213,35 @@ func (m SetupModel) View() string {
 			colorSwatches.WriteString(style.Foreground(lipgloss.Color(colorCode)).Render("░"))
 		}
 
-		if (i+1)%swatchesPerLine == 0 && i < len(colorOptions)-1 {
+		if (i+1)%colorsPerLine == 0 && i < len(colorOptions)-1 {
 			colorSwatches.WriteString("\n")
 		}
 	}
-	b.WriteString(colorSwatches.String())
+	b.WriteString(center(colorSwatches.String()))
 	b.WriteString("\n")
-	b.WriteString("Sshnake color " + selectedColorStyle.
+
+	// Selected Color Indicator
+	b.WriteString(center("Sshnake color " + selectedColorStyle.
 		Foreground(lipgloss.Color(selectedColorCode)).
-		Render("██"))
+		Render("██")))
 
 	b.WriteString("\n")
 	b.WriteString("\n")
 
-	// --- 3. Submit Button ---
+	// Submit Button
 	submitText := "Submit"
+	var submitButton string
 	if m.focusIndex == 2 {
-		b.WriteString(submitButtonStyle.Render(submitText))
+		submitButton = submitButtonStyle.Render(submitText)
 	} else {
-		b.WriteString(blurredButtonStyle.Padding(0, 1).Render(submitText))
+		submitButton = blurredButtonStyle.Padding(0, 1).Render(submitText)
 	}
+	b.WriteString(center(submitButton))
 	b.WriteString("\n\n")
 
-	// --- Help Text ---
-	b.WriteString(helpStyle.Render("(arrows to select color, tab/shift+tab to navigate, enter to confirm, ctrl+c to quit)"))
+	// Help Text
+	b.WriteString(center(helpStyle.Render("(arrows to select color, tab/shift+tab to navigate, enter to confirm, ctrl+c to quit)")))
 
-	// Center the content using the correct width/height
+	// Final centering (this centers the whole block vertically, but the individual lines are now centered horizontally)
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, b.String())
 }

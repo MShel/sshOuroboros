@@ -80,3 +80,17 @@ func (p *Player) UpdateDirection(newDir Direction) {
 	}
 	p.CurrentDirection = newDir
 }
+
+func (p *Player) GetConsolidateTiles() float64 {
+	updatedTiles := []*Tile{}
+	claimedLand := 0.0
+	for _, tile := range p.AllPlayerTiles {
+		if tile.OwnerColor == p.Color {
+			claimedLand += 1.0
+			updatedTiles = append(updatedTiles, tile)
+		}
+	}
+
+	p.AllPlayerTiles = updatedTiles
+	return claimedLand
+}

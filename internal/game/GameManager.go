@@ -21,7 +21,7 @@ type Direction struct {
 type GameTickMsg struct{}
 type PlayerDeadMsg struct {
 	PlayerColor        int
-	FinalClaimedEstate int
+	FinalClaimedEstate float64
 	FinalKills         int
 }
 
@@ -248,7 +248,7 @@ func (gm *GameManager) getSpawnTile() *Tile {
 	bestTile := gm.GameMap[MapRowCount/2][MapColCount/2]
 	maxMinDist := -1
 
-	for i := 0; i < sampleAttempts; i++ {
+	for range sampleAttempts {
 		row := rand.Intn(MapRowCount-2*safeMargin) + safeMargin
 		col := rand.Intn(MapColCount-2*safeMargin) + safeMargin
 		tile := gm.GameMap[row][col]
@@ -300,7 +300,7 @@ func (gm *GameManager) sunsetPlayersWorker() {
 }
 
 func (gm *GameManager) sunsetPlayer(player *Player, needRebirth bool) {
-	playerFinalClaimedLand := 0
+	playerFinalClaimedLand := 0.0
 	for _, tile := range player.AllPlayerTiles {
 		if tile.OwnerColor == player.Color {
 			playerFinalClaimedLand += 1.0
@@ -317,11 +317,11 @@ func (gm *GameManager) sunsetPlayer(player *Player, needRebirth bool) {
 	player.Location.OwnerColor = nil
 
 	if player.SshSession != nil {
-		player.UpdateChannel <- PlayerDeadMsg{
-			PlayerColor:        *player.Color,
-			FinalClaimedEstate: playerFinalClaimedLand,
-			FinalKills:         player.Kills,
-		}
+		// player.UpdateChannel <- PlayerDeadMsg{
+		// 	PlayerColor:        *player.Color,
+		// 	FinalClaimedEstate: playerFinalClaimedLand,
+		// 	FinalKills:         player.Kills,
+		// }
 	}
 	gm.Players.Delete(*player.Color)
 

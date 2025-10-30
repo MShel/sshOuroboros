@@ -12,7 +12,7 @@ import (
 // GameOverState holds the data and local state for rendering the game over screens.
 type GameOverState struct {
 	GameManager    *game.GameManager
-	FinalEstate    int
+	FinalEstate    float64
 	FinalKills     int
 	SelectedButton int
 	ScreenWidth    int
@@ -55,9 +55,9 @@ func (g *GameOverState) RenderGameOverScreen() string {
 		Align(lipgloss.Center).
 		Width(g.ScreenWidth - 4)
 
-	title := messageStyle.Render("💀 G A M E   O V E R 💀")
+	title := messageStyle.Render(" G A M E   O V E R ")
 
-	stats := fmt.Sprintf("\nFinal Stats:\nEstate Claimed: %d tiles\nPlayer Kills: %d\n\n", g.FinalEstate, g.FinalKills)
+	stats := fmt.Sprintf("\nFinal Stats:\n Land Claimed: %.2f tiles\nPlayer Kills: %d\n\n", g.FinalEstate, g.FinalKills)
 
 	exitButton := buttonStyle.Render("EXIT (Enter)")
 	leaderboardButton := buttonStyle.Render("LEADERBOARD")
@@ -131,7 +131,7 @@ func (g *GameOverState) RenderLeaderboardScreen(estateInfo map[*int]int) string 
 
 		row := lipgloss.JoinHorizontal(lipgloss.Top,
 			leaderboardRowStyle.Width(3).Render(strconv.Itoa(rank)),
-			colorStyle.Copy().Width(nameWidth).Render(score.Name),
+			colorStyle.Width(nameWidth).Render(score.Name),
 			leaderboardRowStyle.Width(estateWidth).Render(strconv.Itoa(score.Estate)),
 		)
 
@@ -139,7 +139,7 @@ func (g *GameOverState) RenderLeaderboardScreen(estateInfo map[*int]int) string 
 	}
 
 	// --- Title & Instructions ---
-	title := lipgloss.NewStyle().Bold(true).Padding(1, 0).Render("👑 CURRENT LEADERBOARD 👑")
+	title := lipgloss.NewStyle().Bold(true).Padding(1, 0).Render("CURRENT LEADERBOARD")
 	instruction := lipgloss.NewStyle().Faint(true).Margin(1, 0).Render("Press ESC or ENTER to return to Game Over screen.")
 
 	finalContent := lipgloss.JoinVertical(lipgloss.Center,

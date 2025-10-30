@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"os/signal"
-	"runtime/pprof"
 	"syscall"
 	"time"
 
@@ -26,18 +25,6 @@ const (
 )
 
 func main() {
-
-	f, err := os.Create("cpu.prof")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer f.Close()
-
-	if err := pprof.StartCPUProfile(f); err != nil {
-		log.Fatal(err)
-	}
-	defer pprof.StopCPUProfile()
-
 	sshPKeyPath := os.Getenv("OUROBOROS_PRIVATE_KEY_PATH")
 
 	sshServer, serverCreateErr := wish.NewServer(
