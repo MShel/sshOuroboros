@@ -33,24 +33,16 @@ var (
 				Padding(0, 1)
 )
 
-// 256 color setup
-var colorOptions []string
-
-func init() {
-	// Populate 256 color codes (0 to 255) as strings
-	for i := 0; i < 256; i++ {
-		colorOptions = append(colorOptions, strconv.Itoa(i))
-	}
-}
-
 // Model for our form
 type SetupModel struct {
-	nameInput  textinput.Model
-	colorIndex int // Index of the selected color (0-255)
-	focusIndex int // 0: Name, 1: Color Select, 2: Submit/Quit
-	submitted  bool
-	width      int // Terminal width for wrapping
-	height     int // Terminal height
+	nameInput    textinput.Model
+	colorIndex   int // Index of the selected color (0-255)
+	focusIndex   int // 0: Name, 1: Color Select, 2: Submit/Quit
+	submitted    bool
+	width        int // Terminal width for wrapping
+	height       int // Terminal height
+	gameManager  *game.GameManager
+	colorOptions []string
 	tea.Model
 }
 
@@ -62,14 +54,17 @@ func NewInitialSetupModel(gameManager *game.GameManager, w, h int) SetupModel {
 	ti.PromptStyle = focusedStyle
 	ti.TextStyle = focusedStyle
 
-	return SetupModel{
-		nameInput:  ti,
-		colorIndex: 0,
-		focusIndex: 0,
-		submitted:  false,
-		width:      w, // FIX: Initialize width
-		height:     h, // Initialize height
+	setupModel := SetupModel{
+		nameInput:   ti,
+		colorIndex:  0,
+		focusIndex:  0,
+		submitted:   false,
+		width:       w, // FIX: Initialize width
+		height:      h, // Initialize height
+		gameManager: gameManager,
 	}
+
+	return setupModel
 }
 
 // Init sends a command to start the cursor blinking
@@ -79,6 +74,17 @@ func (m SetupModel) Init() tea.Cmd {
 
 // Update handles messages (key presses, window resizes, etc.)
 func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	colorOptions := []string{}
+	m.gameManager.Players.Range(func(key, value interface{}) bool {
+		if player, ok := value.(*game.Player); ok && player != nil {
+			if player.BotStrategy != nil {
+				colorOptions = append(colorOptions, strconv.Itoa(*player.Color))
+			}
+		}
+		return true
+	})
+	m.colorOptions = colorOptions
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -121,7 +127,7 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, func() tea.Msg {
 						return SetupSubmitMsg{
 							Name:  m.nameInput.Value(),
-							Color: colorOptions[m.colorIndex],
+							Color: m.colorOptions[m.colorIndex],
 						}
 					}
 				case "tab":
@@ -146,16 +152,16 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			switch s {
 			case "up":
-				m.colorIndex = (m.colorIndex - swatchesPerLine + len(colorOptions)) % len(colorOptions)
+				m.colorIndex = (m.colorIndex - swatchesPerLine + len(m.colorOptions)) % len(m.colorOptions)
 				keyConsumed = true
 			case "down":
-				m.colorIndex = (m.colorIndex + swatchesPerLine) % len(colorOptions)
+				m.colorIndex = (m.colorIndex + swatchesPerLine) % len(m.colorOptions)
 				keyConsumed = true
 			case "left":
-				m.colorIndex = (m.colorIndex - 1 + len(colorOptions)) % len(colorOptions)
+				m.colorIndex = (m.colorIndex - 1 + len(m.colorOptions)) % len(m.colorOptions)
 				keyConsumed = true
 			case "right":
-				m.colorIndex = (m.colorIndex + 1) % len(colorOptions)
+				m.colorIndex = (m.colorIndex + 1) % len(m.colorOptions)
 				keyConsumed = true
 			}
 
@@ -202,7 +208,8 @@ func (m SetupModel) View() string {
 	var colorSwatches strings.Builder
 	var selectedColorCode string
 	colorsPerLine := 100
-	for i, colorCode := range colorOptions {
+
+	for i, colorCode := range m.colorOptions {
 		style := colorSwatchStyle.
 			Background(lipgloss.Color(colorCode))
 
@@ -213,7 +220,7 @@ func (m SetupModel) View() string {
 			colorSwatches.WriteString(style.Foreground(lipgloss.Color(colorCode)).Render("░"))
 		}
 
-		if (i+1)%colorsPerLine == 0 && i < len(colorOptions)-1 {
+		if (i+1)%colorsPerLine == 0 && i < len(m.colorOptions)-1 {
 			colorSwatches.WriteString("\n")
 		}
 	}
@@ -221,7 +228,7 @@ func (m SetupModel) View() string {
 	b.WriteString("\n")
 
 	// Selected Color Indicator
-	b.WriteString(center("Sshnake color " + selectedColorStyle.
+	b.WriteString(center("Ourboros color " + selectedColorStyle.
 		Foreground(lipgloss.Color(selectedColorCode)).
 		Render("██")))
 

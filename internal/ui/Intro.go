@@ -72,7 +72,7 @@ var (
 				Margin(1, 2).
 				Border(lipgloss.RoundedBorder())
 
-	introSelectedButtonStyle = introButtonStyle.Copy().
+	introSelectedButtonStyle = introButtonStyle.
 					Background(lipgloss.Color("87")).
 					Foreground(lipgloss.Color("0"))
 )

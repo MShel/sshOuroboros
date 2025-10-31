@@ -1,6 +1,9 @@
 package game
 
-import "math"
+import (
+	"math"
+	"time"
+)
 
 var Directions = [][]int{
 	{1, 0},
@@ -15,7 +18,10 @@ func GetManhattanDistance(t1, t2 *Tile) int {
 	return int(dx + dy)
 }
 
-var SystemColors = map[int]string{237: "WALL", 235: "void"}
+var GameTickDuration = 100 * time.Millisecond
+var VoidColor = 233
+var WallColor = 172
+var SystemColors = map[int]string{WallColor: "WALL", VoidColor: "void"}
 
 func IsWall(row int, col int) bool {
 	if row <= 0 || col <= 0 {

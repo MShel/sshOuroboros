@@ -29,7 +29,6 @@ type PlayerDeadMsg struct {
 type ClaimedEstateMsg struct {
 	PlayersEstate map[*int]int
 }
-
 type GameManager struct {
 	Players           sync.Map
 	SessionsToPlayers sync.Map
@@ -63,7 +62,7 @@ func GetNewGameManager() *GameManager {
 	singletonGameManager = &GameManager{
 		DirectionChannel:     make(chan Direction, 1),
 		SunsetPlayersChannel: make(chan *Player, 1),
-		PlayerRebirth:        make(chan int),
+		PlayerRebirth:        make(chan int, 1),
 		IsRunning:            false,
 		cancelContext:        cancel,
 		GameContext:          gameContex,
@@ -77,7 +76,7 @@ func GetNewGameManager() *GameManager {
 
 func (gm *GameManager) broadcast(msg tea.Msg) {
 	gm.Players.Range(func(key, value interface{}) bool {
-		if player, ok := value.(*Player); ok && player != nil && player.BotStrategy == nil {
+		if player, ok := value.(*Player); ok && player != nil && player.BotStrategy == nil && !player.isDead {
 			select {
 			case player.UpdateChannel <- msg:
 			default:
@@ -93,7 +92,6 @@ func (gm *GameManager) StartGameLoop() {
 		return
 	}
 	gm.IsRunning = true
-	duration := 100 * time.Millisecond
 	sunsetWorkersCount := 50
 	for w := 1; w <= sunsetWorkersCount; w++ {
 		go gm.sunsetPlayersWorker()
@@ -105,7 +103,7 @@ func (gm *GameManager) StartGameLoop() {
 		go gm.rebirthPlayersWorker()
 	}
 
-	ticker := time.NewTicker(duration)
+	ticker := time.NewTicker(GameTickDuration)
 	defer ticker.Stop()
 
 	for gm.IsRunning {
@@ -144,6 +142,7 @@ func (gm *GameManager) processPlayerInput(dir Direction) {
 func (gm *GameManager) processGameTick() {
 	gm.BotStrategyWg.Wait()
 	gm.SpaceFillerService.SpaceFillerWg.Wait()
+
 	gm.Players.Range(func(key, value interface{}) bool {
 		if player, ok := value.(*Player); ok && player != nil {
 			if player == nil || player.isDead {
@@ -157,6 +156,8 @@ func (gm *GameManager) processGameTick() {
 				return true
 			}
 
+			player.isSafe = false
+
 			if nextTile.OwnerColor != nil && nextTile.OwnerColor != player.Color {
 				nextTileOwnerAny, _ := gm.Players.Load(*nextTile.OwnerColor)
 				if nextTileOwnerAny == nil {
@@ -164,11 +165,10 @@ func (gm *GameManager) processGameTick() {
 				}
 
 				nextTileOwner := nextTileOwnerAny.(*Player)
-				if nextTileOwner.isDead {
+				if nextTileOwner.isDead || nextTileOwner.isSafe {
 					return true
 				}
 
-				//head to head collision
 				if nextTileOwner.Location == nextTile {
 					nextTileOwner.isDead = true
 					player.isDead = true
@@ -187,7 +187,10 @@ func (gm *GameManager) processGameTick() {
 					player.Kills += 1
 					nextTile.OwnerColor = player.Color
 					nextTile.IsTail = true
-					player.Tail = append(player.Tail, nextTile)
+					player.Tail.tailLock.Lock()
+					player.Tail.tailTiles = append(player.Tail.tailTiles, nextTile)
+					player.Tail.tailLock.Unlock()
+
 					player.Location = nextTile
 
 					return true
@@ -195,9 +198,17 @@ func (gm *GameManager) processGameTick() {
 
 			}
 
-			if nextTile.OwnerColor == player.Color && len(player.Tail) > 0 {
-				gm.SpaceFillerService.SpaceFillerChan <- player
+			if nextTile.OwnerColor == player.Color && len(player.Tail.tailTiles) > 0 {
+				select {
+				case gm.SpaceFillerService.SpaceFillerChan <- player:
+					// Successfully sent direction
+				default:
+					gm.SpaceFillerService = getNewSpaceFiller(gm.GameMap)
+					log.Printf("space fill channel is full")
+				}
+
 				player.Location = nextTile
+				player.isSafe = true
 				return true
 			}
 
@@ -205,24 +216,23 @@ func (gm *GameManager) processGameTick() {
 				nextTile.OwnerColor = player.Color
 				nextTile.IsTail = true
 				nextTile.Direction = player.CurrentDirection
-				player.Tail = append(player.Tail, nextTile)
+				player.Tail.tailLock.Lock()
+				player.Tail.tailTiles = append(player.Tail.tailTiles, nextTile)
+				player.Tail.tailLock.Unlock()
 			}
 
-			// Update player's location
 			player.Location = nextTile
 
-			// Bots get their direction calculated here in a goroutine
 			if player.BotStrategy != nil {
 				gm.BotStrategyWg.Add(1)
 				go func() {
 					defer gm.BotStrategyWg.Done()
-					// Optimization: Pass the pre-calculated, filtered opponents map.
 					nextDirection := player.BotStrategy.getNextBestDirection(player, gm)
 					player.CurrentDirection = nextDirection
 				}()
 			}
 		}
-		return true // continue iteration
+		return true
 	})
 }
 
@@ -301,13 +311,18 @@ func (gm *GameManager) sunsetPlayersWorker() {
 
 func (gm *GameManager) sunsetPlayer(player *Player, needRebirth bool) {
 	playerFinalClaimedLand := 0.0
-	for _, tile := range player.AllPlayerTiles {
+	player.AllTiles.allTilesLock.Lock()
+	player.Tail.tailLock.Lock()
+	defer player.AllTiles.allTilesLock.Unlock()
+	defer player.Tail.tailLock.Unlock()
+
+	for _, tile := range player.AllTiles.AllPlayerTiles {
 		if tile.OwnerColor == player.Color {
 			playerFinalClaimedLand += 1.0
 			tile.OwnerColor = nil
 		}
 	}
-	for _, tile := range player.Tail {
+	for _, tile := range player.Tail.tailTiles {
 		if tile.OwnerColor == player.Color {
 			tile.OwnerColor = nil
 		}
@@ -317,11 +332,11 @@ func (gm *GameManager) sunsetPlayer(player *Player, needRebirth bool) {
 	player.Location.OwnerColor = nil
 
 	if player.SshSession != nil {
-		// player.UpdateChannel <- PlayerDeadMsg{
-		// 	PlayerColor:        *player.Color,
-		// 	FinalClaimedEstate: playerFinalClaimedLand,
-		// 	FinalKills:         player.Kills,
-		// }
+		player.UpdateChannel <- PlayerDeadMsg{
+			PlayerColor:        *player.Color,
+			FinalClaimedEstate: playerFinalClaimedLand,
+			FinalKills:         player.Kills,
+		}
 	}
 	gm.Players.Delete(*player.Color)
 
@@ -352,7 +367,7 @@ func (gm *GameManager) isOtherPlayerTail(tile *Tile, playerColor *int) bool {
 var defaultStrategy = &DefaultStrategy{}
 
 func (gm *GameManager) intializeBotControledPlayers(botCount int) {
-	for botId := 10; botId < 10+botCount; botId++ {
+	for botId := 0; botId < botCount; botId++ {
 		if _, ok := SystemColors[botId]; ok {
 			continue
 		}
@@ -361,4 +376,34 @@ func (gm *GameManager) intializeBotControledPlayers(botCount int) {
 		botPlayer.BotStrategy = defaultStrategy
 		gm.Players.Store(botId, botPlayer)
 	}
+}
+
+func (gm *GameManager) GetMapCopy(startRow, endRow, startCol, endCol int) [][]Tile {
+	gm.MapMutex.RLock()
+	defer gm.MapMutex.RUnlock()
+
+	startRow = max(0, startRow)
+	endRow = min(MapRowCount, endRow)
+	startCol = max(0, startCol)
+	endCol = min(MapColCount, endCol)
+
+	rows := endRow - startRow
+	if rows <= 0 {
+		return nil
+	}
+	cols := endCol - startCol
+	if cols <= 0 {
+		return nil
+	}
+
+	mapCopy := make([][]Tile, rows)
+
+	for i := 0; i < rows; i++ {
+		mapCopy[i] = make([]Tile, cols)
+		for j := 0; j < cols; j++ {
+			mapCopy[i][j] = *gm.GameMap[startRow+i][startCol+j]
+		}
+	}
+
+	return mapCopy
 }

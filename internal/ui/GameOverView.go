@@ -28,9 +28,8 @@ var (
 				Bold(true)
 
 	selectedButtonStyle = GameOverbuttonStyle.
-				Background(lipgloss.Color("4")). // Red background for selection
-				Foreground(lipgloss.Color("15")) // White/Bright text
-
+				Background(lipgloss.Color("4")).
+				Foreground(lipgloss.Color("15"))
 	leaderboardHeaderStyle = lipgloss.NewStyle().
 				Bold(true).
 				Foreground(lipgloss.Color("15")).
@@ -46,7 +45,6 @@ var (
 				BorderForeground(lipgloss.Color("8"))
 )
 
-// RenderGameOverScreen draws the death message and buttons.
 func (g *GameOverState) RenderGameOverScreen() string {
 	messageStyle := lipgloss.NewStyle().
 		Bold(true).
@@ -57,7 +55,7 @@ func (g *GameOverState) RenderGameOverScreen() string {
 
 	title := messageStyle.Render(" G A M E   O V E R ")
 
-	stats := fmt.Sprintf("\nFinal Stats:\n Land Claimed: %.2f tiles\nPlayer Kills: %d\n\n", g.FinalEstate, g.FinalKills)
+	stats := fmt.Sprintf("\nFinal Stats:\n Land Claimed: %.2f%% \nPlayer Kills: %d\n\n", g.FinalEstate, g.FinalKills)
 
 	exitButton := buttonStyle.Render("EXIT (Enter)")
 	leaderboardButton := buttonStyle.Render("LEADERBOARD")

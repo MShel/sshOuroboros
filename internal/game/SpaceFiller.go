@@ -43,7 +43,7 @@ func (spaceFillerInstance *SpaceFiller) spaceFillWorker() {
 			return
 		}
 
-		if player != nil && len(player.Tail) > 0 {
+		if player != nil && len(player.Tail.tailTiles) > 0 {
 			spaceFillerInstance.SpaceFillerWg.Add(1)
 			spaceFillerInstance.spaceFillFromTail(player)
 			player.resetTailData()
@@ -54,9 +54,11 @@ func (spaceFillerInstance *SpaceFiller) spaceFillWorker() {
 func (sf *SpaceFiller) spaceFillFromTail(player *Player) {
 	spaceFilled := false
 	defer sf.SpaceFillerWg.Done()
+	player.Tail.tailLock.Lock()
+	defer player.Tail.tailLock.Unlock()
 
-	for i := (len(player.Tail) - 1); i >= 0; i-- {
-		segment := player.Tail[i]
+	for i := (len(player.Tail.tailTiles) - 1); i >= 0; i-- {
+		segment := player.Tail.tailTiles[i]
 		segmentRow, segmentCol := segment.Y, segment.X
 
 		topTile, bottomTile, leftTile, rightTile := sf.GameMap[segmentRow-1][segmentCol],
@@ -79,7 +81,9 @@ func (sf *SpaceFiller) spaceFillFromTail(player *Player) {
 				sf.fillWithSeeds(player, leftTile, rightTile)
 			}
 		}
-		player.AllPlayerTiles = append(player.AllPlayerTiles, segment)
+		player.AllTiles.allTilesLock.Lock()
+		player.AllTiles.AllPlayerTiles = append(player.AllTiles.AllPlayerTiles, segment)
+		player.AllTiles.allTilesLock.Unlock()
 		segment.IsTail = false
 	}
 }
@@ -154,7 +158,9 @@ func (sf *SpaceFiller) findAndFillTiles(
 			for tile := range mapOfTilesToIgnore {
 				tile.OwnerColor = player.Color
 				tile.IsTail = false
-				player.AllPlayerTiles = append(player.AllPlayerTiles, tile)
+				player.AllTiles.allTilesLock.Lock()
+				player.AllTiles.AllPlayerTiles = append(player.AllTiles.AllPlayerTiles, tile)
+				player.AllTiles.allTilesLock.Unlock()
 			}
 		}
 	}

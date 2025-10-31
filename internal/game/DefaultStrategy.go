@@ -9,6 +9,11 @@ type DefaultStrategy struct{}
 
 // getNextBestDirection determines the best move for the bot based on a strict priority hierarchy.
 func (s *DefaultStrategy) getNextBestDirection(player *Player, gm *GameManager) Direction {
+
+	if player.isDead {
+		return Direction{}
+	}
+
 	currentTile := player.Location
 	validMoves := make(map[Direction]*Tile)
 
@@ -117,7 +122,7 @@ func (s *DefaultStrategy) getNextBestDirection(player *Player, gm *GameManager) 
 		}
 
 		// Avoid expanding too far from the center if the tail is long
-		if len(player.Tail) > 5 {
+		if len(player.Tail.tailTiles) > 5 {
 			distToCenter := GetManhattanDistance(tile, centerTile)
 			currentDistToCenter := GetManhattanDistance(currentTile, centerTile)
 
@@ -244,7 +249,7 @@ func (s *DefaultStrategy) getBestExpansionDirection(player *Player, gm *GameMana
 			dist -= 2
 		}
 
-		if len(player.Tail) > 15 {
+		if len(player.Tail.tailTiles) > 15 {
 			distToCenter := GetManhattanDistance(tile, centerTile)
 			currentDistToCenter := GetManhattanDistance(player.Location, centerTile)
 
@@ -286,7 +291,7 @@ func (s *DefaultStrategy) findNearestOpponentHead(player *Player, gm *GameManage
 }
 
 func (s *DefaultStrategy) calculateThreatScore(player *Player, gm *GameManager) int {
-	tailLength := len(player.Tail)
+	tailLength := len(player.Tail.tailTiles)
 	if tailLength < 2 {
 		return 0
 	}
@@ -302,7 +307,7 @@ func (s *DefaultStrategy) calculateThreatScore(player *Player, gm *GameManager) 
 			opponentHead := otherPlayer.Location
 
 			minDistToTail := math.MaxInt32
-			for _, tailTile := range player.Tail {
+			for _, tailTile := range player.Tail.tailTiles {
 				dist := GetManhattanDistance(opponentHead, tailTile)
 				if dist < minDistToTail {
 					minDistToTail = dist
@@ -321,12 +326,11 @@ func (s *DefaultStrategy) calculateThreatScore(player *Player, gm *GameManager) 
 }
 
 func (s *DefaultStrategy) estimateTerritoryGain(player *Player) int {
-	tailLength := len(player.Tail)
+	tailLength := len(player.Tail.tailTiles)
 	if tailLength < 3 {
 		return 0
 	}
 	return tailLength * 2
 }
 
-// Get the implementation of the strategy interface.
 var AgresssorStrategy Strategy = &DefaultStrategy{}

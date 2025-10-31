@@ -2,25 +2,36 @@ package game
 
 import (
 	"math/rand"
+	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/ssh"
 )
 
+type Tail struct {
+	tailLock  sync.Mutex
+	tailTiles []*Tile
+}
+
+type AllTiles struct {
+	allTilesLock   sync.Mutex
+	AllPlayerTiles []*Tile
+}
+
 type Player struct {
-	Name          string
-	SshSession    ssh.Session
-	Color         *int
-	ClaimedEstate int
-	Location      *Tile
-	Tail          []*Tile
-	// that might contain tiles that are not theirs anymore TODO use that instead of scanning the map
-	AllPlayerTiles   []*Tile
+	Name             string
+	SshSession       ssh.Session
+	Color            *int
+	ClaimedEstate    int
+	Location         *Tile
 	CurrentDirection Direction
 	UpdateChannel    chan tea.Msg
 	BotStrategy      Strategy
 	Kills            int
 	isDead           bool
+	isSafe           bool
+	Tail             Tail
+	AllTiles         AllTiles
 }
 
 func CreateNewPlayer(sshSession ssh.Session, name string, color int, spawnPoint *Tile) *Player {
@@ -39,12 +50,14 @@ func CreateNewPlayer(sshSession ssh.Session, name string, color int, spawnPoint 
 		SshSession:       sshSession,
 		Location:         spawnPoint,
 		CurrentDirection: possibleDirections[rand.Intn(len(possibleDirections))],
-		Tail: []*Tile{
-			spawnPoint,
-		},
+		Tail: Tail{
+			tailTiles: []*Tile{
+				spawnPoint,
+			}},
 		UpdateChannel: make(chan tea.Msg, 256),
 		Kills:         0,
 		isDead:        false,
+		isSafe:        false,
 	}
 }
 
@@ -71,7 +84,10 @@ func (p *Player) GetNextTile() *Tile {
 }
 
 func (p *Player) resetTailData() {
-	p.Tail = []*Tile{}
+	p.Tail.tailLock.Lock()
+	defer p.Tail.tailLock.Unlock()
+
+	p.Tail.tailTiles = []*Tile{}
 }
 
 func (p *Player) UpdateDirection(newDir Direction) {
@@ -82,15 +98,17 @@ func (p *Player) UpdateDirection(newDir Direction) {
 }
 
 func (p *Player) GetConsolidateTiles() float64 {
+	p.AllTiles.allTilesLock.Lock()
+	defer p.AllTiles.allTilesLock.Unlock()
 	updatedTiles := []*Tile{}
 	claimedLand := 0.0
-	for _, tile := range p.AllPlayerTiles {
+	for _, tile := range p.AllTiles.AllPlayerTiles {
 		if tile.OwnerColor == p.Color {
 			claimedLand += 1.0
 			updatedTiles = append(updatedTiles, tile)
 		}
 	}
 
-	p.AllPlayerTiles = updatedTiles
+	p.AllTiles.AllPlayerTiles = updatedTiles
 	return claimedLand
 }

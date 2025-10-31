@@ -3,10 +3,15 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
+	"runtime/pprof"
 	"syscall"
 	"time"
+
+	_ "net/http/pprof"
 
 	"github.com/Mshel/sshnake/internal/game"
 	"github.com/Mshel/sshnake/internal/ui"
@@ -19,12 +24,29 @@ import (
 	"github.com/charmbracelet/wish/logging"
 )
 
+func startPprofServer() {
+	// Run pprof server on port 6060. This server is distinct from your main game server.
+	fmt.Println(http.ListenAndServe("localhost:6060", nil))
+}
+
 const (
 	host string = "0.0.0.0"
 	port string = "6996"
 )
 
 func main() {
+	go startPprofServer()
+	f, err := os.Create("cpu.prof")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+
+	if err := pprof.StartCPUProfile(f); err != nil {
+		log.Fatal(err)
+	}
+	defer pprof.StopCPUProfile()
+
 	sshPKeyPath := os.Getenv("OUROBOROS_PRIVATE_KEY_PATH")
 
 	sshServer, serverCreateErr := wish.NewServer(
