@@ -14,6 +14,8 @@ const (
 	IntroScreen Screen = iota
 	SetupScreen
 	GameScreen
+	GameOverScreen
+	LeaderboardScreen
 )
 
 // Messages for state transitions
@@ -23,15 +25,15 @@ type SetupSubmitMsg struct {
 	Color string
 }
 
-type ShowLeaderboardMsg struct{}
-
 type ControllerModel struct {
 	CurrentScreen Screen
 	GameManager   *game.GameManager
 
-	IntroModel tea.Model
-	SetupModel tea.Model
-	GameModel  tea.Model
+	IntroModel       tea.Model
+	SetupModel       tea.Model
+	GameModel        tea.Model
+	GameOverModel    tea.Model
+	LeaderboardModel tea.Model
 
 	CurrentUserSession ssh.Session
 	ScreenWidth        int
@@ -67,6 +69,16 @@ func (m ControllerModel) View() string {
 			return m.GameModel.View()
 		}
 		return "Game Loading..."
+	case GameOverScreen:
+		if m.GameOverModel != nil {
+			return m.GameOverModel.View()
+		}
+		return "Game Over Loading..."
+	case LeaderboardScreen:
+		if m.LeaderboardModel != nil {
+			return m.LeaderboardModel.View()
+		}
+		return "Leaderboard Loading..."
 	default:
 		return "Unknown Screen"
 	}
@@ -76,7 +88,6 @@ func (m ControllerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
-	// --- 1. Global Key Check (Check before the main switch) ---
 	if msg, ok := msg.(tea.KeyMsg); ok {
 		if msg.String() == "ctrl+c" {
 
@@ -94,22 +105,52 @@ func (m ControllerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// --- 2. State Transition Message Handling ---
 	switch msg := msg.(type) {
 	case IntroSubmitMsg:
 		switch msg {
 		case 0:
-			// Start Registration
 			m.CurrentScreen = SetupScreen
 			return m, m.SetupModel.Init()
 		case 1:
-			// View Leaderboard
-			m.CurrentScreen = GameScreen
-			m.GameModel = NewGameModel(m.GameManager, nil, m.ScreenWidth, m.ScreenHeight)
-
-			// Init the model, then immediately send the ShowLeaderboardMsg
-			return m, tea.Sequence(m.GameModel.Init(), func() tea.Msg { return ShowLeaderboardMsg{} })
+			m.CurrentScreen = LeaderboardScreen
+			tempGameModel := NewGameModel(m.GameManager, nil, m.ScreenWidth, m.ScreenHeight)
+			initialData := tempGameModel.calculateLeaderboard()
+			m.LeaderboardModel = NewLeaderboardModel(m.GameManager, map[*int]int{}, initialData, m.ScreenWidth, m.ScreenHeight)
+			return m, m.LeaderboardModel.Init()
 		}
+
+	case ShowGameOverMsg:
+		m.CurrentScreen = GameOverScreen
+		m.GameOverModel = NewGameOverModel(
+			m.GameManager,
+			msg.FinalEstate,
+			msg.FinalKills,
+			msg.LeaderboardData,
+			msg.EstateInfo,
+			m.ScreenWidth,
+			m.ScreenHeight,
+		)
+		return m, m.GameOverModel.Init()
+
+	case ShowLeaderboardFromGameOverMsg:
+		m.CurrentScreen = LeaderboardScreen
+		m.LeaderboardModel = NewLeaderboardModel(m.GameManager, msg.EstateInfo, msg.LeaderboardData, m.ScreenWidth, m.ScreenHeight)
+		return m, m.LeaderboardModel.Init()
+
+	case ReturnFromLeaderboardMsg:
+		if m.CurrentUserSession != nil {
+			m.CurrentScreen = GameOverScreen
+			return m, nil
+		}
+
+		m.CurrentScreen = IntroScreen
+		m.CurrentUserSession = nil
+		return m, m.IntroModel.Init()
+
+	case ReturnToIntroMsg:
+		m.CurrentScreen = IntroScreen
+		m.CurrentUserSession = nil
+		return m, m.IntroModel.Init()
 
 	case SetupSubmitMsg:
 		m.CurrentScreen = GameScreen
@@ -123,12 +164,9 @@ func (m ControllerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.GameModel.Init()
 
 	case QuitGameMsg:
-		// Transition from Leaderboard back to IntroScreen
-		m.CurrentScreen = IntroScreen
-		return m, m.IntroModel.Init()
+		return m, tea.Quit
 
 	default:
-		// --- 3. Message Delegation (Pass to the active model for all other messages) ---
 		switch m.CurrentScreen {
 		case IntroScreen:
 			m.IntroModel, cmd = m.IntroModel.Update(msg)
@@ -139,6 +177,16 @@ func (m ControllerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case GameScreen:
 			if m.GameModel != nil {
 				m.GameModel, cmd = m.GameModel.Update(msg)
+				cmds = append(cmds, cmd)
+			}
+		case GameOverScreen:
+			if m.GameOverModel != nil {
+				m.GameOverModel, cmd = m.GameOverModel.Update(msg)
+				cmds = append(cmds, cmd)
+			}
+		case LeaderboardScreen:
+			if m.LeaderboardModel != nil {
+				m.LeaderboardModel, cmd = m.LeaderboardModel.Update(msg)
 				cmds = append(cmds, cmd)
 			}
 		}

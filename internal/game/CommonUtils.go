@@ -18,7 +18,7 @@ func GetManhattanDistance(t1, t2 *Tile) int {
 	return int(dx + dy)
 }
 
-var GameTickDuration = 100 * time.Millisecond
+var GameTickDuration = 1000 * time.Millisecond
 var VoidColor = 233
 var WallColor = 172
 var SystemColors = map[int]string{WallColor: "WALL", VoidColor: "void"}

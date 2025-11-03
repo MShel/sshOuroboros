@@ -31,6 +31,10 @@ var (
 	blurredButtonStyle = buttonStyle.
 				BorderForeground(blurredColor).
 				Padding(0, 1)
+
+	selectedSwatchBorderStyle = lipgloss.NewStyle().
+					Border(lipgloss.NormalBorder(), false, true, false, true).
+					BorderForeground(lipgloss.Color("220"))
 )
 
 // Model for our form
@@ -48,9 +52,10 @@ type SetupModel struct {
 
 func NewInitialSetupModel(gameManager *game.GameManager, w, h int) SetupModel {
 	ti := textinput.New()
-	ti.Placeholder = "Your Orboros Name"
+	ti.Placeholder = "Your Ouroboros Name"
 	ti.Focus()
 	ti.CharLimit = 20
+	ti.Width = 30
 	ti.PromptStyle = focusedStyle
 	ti.TextStyle = focusedStyle
 
@@ -145,10 +150,7 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var keyConsumed bool
 
 			// Calculate swatches per line (2 columns per swatch: 1 for block, 1 for small visual space/margin)
-			swatchesPerLine := (m.width - 2) / 2
-			if swatchesPerLine < 1 {
-				swatchesPerLine = 1
-			}
+			swatchesPerLine := 30
 
 			switch s {
 			case "up":
@@ -183,19 +185,21 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m SetupModel) View() string {
-	// Helper to center content within the terminal width
 	center := func(s string) string {
 		return lipgloss.NewStyle().Width(m.width).Align(lipgloss.Center).Render(s)
 	}
 
+	if len(m.colorOptions) == 0 {
+		return center("Sorry all the colors are occupied with players, colors will appear as soon as they will become available")
+	}
+
 	var b strings.Builder
 
-	// Name Input
 	b.WriteString(center(m.nameInput.View()))
 	b.WriteString("\n\n")
 
 	// Color Prompt
-	orborusColorPrompt := "Select your sshnake color(use arrows)"
+	orborusColorPrompt := "Select your ouroboros color(use arrows)"
 	var colorPrompt string
 	if m.focusIndex == 1 {
 		colorPrompt = focusedStyle.Render(orborusColorPrompt)
@@ -207,17 +211,23 @@ func (m SetupModel) View() string {
 
 	var colorSwatches strings.Builder
 	var selectedColorCode string
-	colorsPerLine := 100
+
+	colorsPerLine := 30
 
 	for i, colorCode := range m.colorOptions {
 		style := colorSwatchStyle.
 			Background(lipgloss.Color(colorCode))
 
-		if i == m.colorIndex {
-			colorSwatches.WriteString(style.Foreground(lipgloss.Color("15")).Render("█"))
+		swatchChar := "█"
+		if i == m.colorIndex && m.focusIndex == 1 {
+			swatch := style.Foreground(lipgloss.Color(colorCode)).Render(swatchChar)
+			colorSwatches.WriteString(selectedSwatchBorderStyle.Render(swatch))
+			selectedColorCode = colorCode
+		} else if i == m.colorIndex {
+			colorSwatches.WriteString(style.Foreground(lipgloss.Color(colorCode)).Render(swatchChar))
 			selectedColorCode = colorCode
 		} else {
-			colorSwatches.WriteString(style.Foreground(lipgloss.Color(colorCode)).Render("░"))
+			colorSwatches.WriteString(style.Foreground(lipgloss.Color(colorCode)).Render(swatchChar))
 		}
 
 		if (i+1)%colorsPerLine == 0 && i < len(m.colorOptions)-1 {
@@ -227,7 +237,6 @@ func (m SetupModel) View() string {
 	b.WriteString(center(colorSwatches.String()))
 	b.WriteString("\n")
 
-	// Selected Color Indicator
 	b.WriteString(center("Ourboros color " + selectedColorStyle.
 		Foreground(lipgloss.Color(selectedColorCode)).
 		Render("██")))

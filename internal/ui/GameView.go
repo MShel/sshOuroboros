@@ -14,13 +14,17 @@ import (
 	"github.com/charmbracelet/ssh"
 )
 
-type GameState int
+// ShowGameOverMsg is the NEW message to signal the Controller to switch to the Game Over screen.
+type ShowGameOverMsg struct {
+	FinalEstate     float64
+	FinalKills      int
+	LeaderboardData []PlayerScore // Data ready to pass to GameOverModel
+	EstateInfo      map[*int]int  // Data ready to pass to GameOverModel
+}
 
-const (
-	StatePlaying GameState = iota
-	StateGameOver
-	StateLeaderboard
-)
+type QuitGameMsg struct{} // Used to signal the Controller to exit the game (used by anonymous leaderboard viewer)
+
+// Removed: GameState enum, StateGameOver, StateLeaderboard
 
 var (
 	mapViewStyle = lipgloss.NewStyle().
@@ -54,7 +58,7 @@ const (
 type PlayerScore struct {
 	Name  string
 	Color int
-	Land  float64
+	Land  float64 // Stored as raw tile count
 }
 
 type GameViewModel struct {
@@ -65,26 +69,17 @@ type GameViewModel struct {
 	ScreenHeight    int
 	gameManager     *game.GameManager
 	UserSession     ssh.Session
-	gameState       GameState
-	gameOverState   GameOverState
 	LeaderboardData []PlayerScore
 }
 
 func NewGameModel(gm *game.GameManager, session ssh.Session, screenWidth int, screenHeight int) GameViewModel {
 	return GameViewModel{
-		gameManager:  gm,
-		UserSession:  session,
-		TickCount:    0,
-		EstateInfo:   make(map[*int]int),
-		ScreenWidth:  screenWidth,
-		ScreenHeight: screenHeight,
-		gameState:    StatePlaying,
-		gameOverState: GameOverState{
-			GameManager:    gm,
-			ScreenWidth:    screenWidth,
-			ScreenHeight:   screenHeight,
-			SelectedButton: 0,
-		},
+		gameManager:     gm,
+		UserSession:     session,
+		TickCount:       0,
+		EstateInfo:      make(map[*int]int),
+		ScreenWidth:     screenWidth,
+		ScreenHeight:    screenHeight,
 		LeaderboardData: make([]PlayerScore, 0),
 	}
 }
@@ -93,58 +88,17 @@ func (m GameViewModel) Init() tea.Cmd {
 	return m.listenForGameUpdates()
 }
 
-type QuitGameMsg struct{}
-
 func (m GameViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case ShowLeaderboardMsg:
-		m.gameState = StateLeaderboard
-		return m, nil
 
 	case tea.KeyMsg:
-		if m.gameState == StateGameOver || m.gameState == StateLeaderboard {
-			switch msg.String() {
-			case "esc":
-				if m.gameState == StateLeaderboard {
-					if m.UserSession != nil {
-						m.gameState = StateGameOver
-						return m, nil
-					} else {
-						return m, func() tea.Msg { return QuitGameMsg{} }
-					}
-				}
-			case "left", "h":
-				if m.gameState == StateGameOver {
-					m.gameOverState.SelectedButton = max(0, m.gameOverState.SelectedButton-1)
-				}
-			case "right", "l":
-				if m.gameState == StateGameOver {
-					m.gameOverState.SelectedButton = min(1, m.gameOverState.SelectedButton+1)
-				}
-			case "enter":
-				switch m.gameState {
-				case StateGameOver:
-					if m.gameOverState.SelectedButton == 0 {
-						return m, tea.Quit
-					} else {
-						m.gameState = StateLeaderboard
-					}
-				case StateLeaderboard:
-					if m.UserSession != nil {
-						m.gameState = StateGameOver
-						return m, nil
-					} else {
-						return m, func() tea.Msg { return QuitGameMsg{} }
-					}
-				}
-				return m, nil
-			}
+		if m.UserSession == nil {
 			return m, nil
 		}
 
 		currentPlayerVal, ok := m.gameManager.SessionsToPlayers.Load(m.UserSession)
 		if !ok || currentPlayerVal == nil {
-			return m, nil
+			return m, nil // Player has died or session is invalid
 		}
 
 		currentPlayer := currentPlayerVal.(*game.Player)
@@ -167,10 +121,6 @@ func (m GameViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		if engineCommand == currentPlayer.CurrentDirection {
-			return m, nil
-		}
-
 		if (engineCommand == game.Direction{}) {
 			return m, nil
 		}
@@ -178,7 +128,6 @@ func (m GameViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		select {
 		case m.gameManager.DirectionChannel <- engineCommand:
 			log.Info("sending")
-			// Successfully sent direction
 		default:
 			log.Warn("direction channels is full")
 		}
@@ -199,12 +148,15 @@ func (m GameViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if ok {
 			currentPlayer := currentPlayerVal.(*game.Player)
 			if *currentPlayer.Color == msg.PlayerColor {
-				log.Info("Current player died, showing Game Over screen.", "player", currentPlayer.Name)
-				m.gameState = StateGameOver
-				m.gameOverState.FinalEstate = (msg.FinalClaimedEstate * 100) / float64(game.MapColCount*game.MapRowCount)
-				m.gameOverState.FinalKills = msg.FinalKills
-				m.gameOverState.SelectedButton = 0
-				return m, m.listenForGameUpdates()
+				m.gameManager.SessionsToPlayers.Delete(m.UserSession)
+				return m, func() tea.Msg {
+					return ShowGameOverMsg{
+						FinalEstate:     (msg.FinalClaimedEstate * 100) / float64(game.MapColCount*game.MapRowCount),
+						FinalKills:      msg.FinalKills,
+						LeaderboardData: m.LeaderboardData,
+						EstateInfo:      m.EstateInfo,
+					}
+				}
 			}
 		}
 		m.LeaderboardData = m.calculateLeaderboard()
@@ -235,16 +187,12 @@ func (m GameViewModel) calculateLeaderboard() []PlayerScore {
 }
 
 func (m GameViewModel) View() string {
-	if m.gameState == StateGameOver {
-		return m.gameOverState.RenderGameOverScreen()
-	}
-
-	if m.gameState == StateLeaderboard {
-		return m.gameOverState.RenderLeaderboardScreen(m.EstateInfo)
-	}
 
 	currentPlayerVal, ok := m.gameManager.SessionsToPlayers.Load(m.UserSession)
 	if !ok || currentPlayerVal == nil {
+		if m.UserSession != nil {
+			return lipgloss.Place(m.ScreenWidth, m.ScreenHeight, lipgloss.Center, lipgloss.Center, "Game Over... Switching screen...")
+		}
 		return lipgloss.Place(m.ScreenWidth, m.ScreenHeight, lipgloss.Center, lipgloss.Center, "Waiting for game manager...")
 	}
 
@@ -330,7 +278,6 @@ func (m GameViewModel) renderMap(currentPlayer *game.Player, width int, height i
 					Foreground(lipgloss.Color(strconv.Itoa(*tile.OwnerColor)))
 
 				if tile.IsTail {
-					// Logic for drawing connected tail lines
 					hasUp, hasDown, hasLeft, hasRight := false, false, false, false
 
 					if row-1 >= 0 {
@@ -395,7 +342,6 @@ func (m GameViewModel) renderMap(currentPlayer *game.Player, width int, height i
 	return paddedMap
 }
 
-// renderStatusPanel draws the stats and a simplified leaderboard.
 func (m GameViewModel) renderStatusPanel(currentPlayer *game.Player, width int) string {
 	var statusContent strings.Builder
 
@@ -410,7 +356,6 @@ func (m GameViewModel) renderStatusPanel(currentPlayer *game.Player, width int) 
 
 	statusContent.WriteString("\n" + lipgloss.NewStyle().Bold(true).Render("--- Leaderboard(TOP 10) ---") + "\n")
 
-	// Recalculate player counts (fast iteration)
 	botCount := 0
 	realPlayerCount := 0
 
@@ -427,7 +372,6 @@ func (m GameViewModel) renderStatusPanel(currentPlayer *game.Player, width int) 
 	statusContent.WriteString(fmt.Sprintf("PlayerCount: %d\n", realPlayerCount))
 	statusContent.WriteString(fmt.Sprintf("Bots count: %d\n", botCount))
 
-	// UPDATED: Use the pre-calculated and sorted data
 	for i, score := range m.LeaderboardData {
 		colorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(strconv.Itoa(score.Color)))
 		statusContent.WriteString(fmt.Sprintf("%d. %s%s: %.2f %%\n", i+1, colorStyle.Render("● "), score.Name,
@@ -444,24 +388,18 @@ func (m GameViewModel) renderStatusPanel(currentPlayer *game.Player, width int) 
 
 func (m GameViewModel) listenForGameUpdates() tea.Cmd {
 	if m.UserSession == nil {
-		return nil
-	}
-
-	currentPlayerVal, ok := m.gameManager.SessionsToPlayers.Load(m.UserSession)
-	if !ok {
 		return tea.Tick(game.GameTickDuration, func(t time.Time) tea.Msg {
 			return game.GameTickMsg{}
 		})
 	}
 
-	currentPlayer := currentPlayerVal.(*game.Player)
-	return tea.Tick(game.GameTickDuration, func(t time.Time) tea.Msg {
+	currentPlayerVal, ok := m.gameManager.SessionsToPlayers.Load(m.UserSession)
+	if !ok {
+		return nil
+	}
 
-		select {
-		case msg := <-currentPlayer.UpdateChannel:
-			return msg
-		default:
-			return nil
-		}
-	})
+	currentPlayer := currentPlayerVal.(*game.Player)
+	return func() tea.Msg {
+		return <-currentPlayer.UpdateChannel
+	}
 }

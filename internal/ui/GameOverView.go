@@ -2,34 +2,27 @@ package ui
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/Mshel/sshnake/internal/game"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
-// GameOverState holds the data and local state for rendering the game over screens.
-type GameOverState struct {
-	GameManager    *game.GameManager
-	FinalEstate    float64
-	FinalKills     int
-	SelectedButton int
-	ScreenWidth    int
-	ScreenHeight   int
+// Messages for GameOverModel to signal transition back to the Controller
+type ShowLeaderboardFromGameOverMsg struct {
+	LeaderboardData []PlayerScore // Data ready to pass to the LeaderboardModel
+	EstateInfo      map[*int]int  // Estate data ready to pass to the LeaderboardModel
 }
+type ReturnToIntroMsg struct{} // To signal the Controller to go back to Intro/Quit
 
-// Styles for Game Over/Leaderboard
+// Messages for LeaderboardModel to signal transition back to the Controller
+type ReturnFromLeaderboardMsg struct{}
+
+// Shared Styles
 var (
-	GameOverbuttonStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("0")).
-				Padding(0, 3).
-				Margin(1, 1).
-				Bold(true)
-
-	selectedButtonStyle = GameOverbuttonStyle.
-				Background(lipgloss.Color("4")).
-				Foreground(lipgloss.Color("15"))
 	leaderboardHeaderStyle = lipgloss.NewStyle().
 				Bold(true).
 				Foreground(lipgloss.Color("15")).
@@ -45,85 +38,183 @@ var (
 				BorderForeground(lipgloss.Color("8"))
 )
 
-func (g *GameOverState) RenderGameOverScreen() string {
+// --- GAME OVER MODEL ---
+// Dedicated model for the Game Over screen. It handles button selection and sends transition messages.
+
+type GameOverModel struct {
+	tea.Model
+	GameManager     *game.GameManager
+	FinalEstate     float64       // Final claimed land percentage
+	FinalKills      int           // Final kill count
+	SelectedButton  int           // 0 for EXIT, 1 for LEADERBOARD
+	LeaderboardData []PlayerScore // Current leaderboard snapshot for passing
+	EstateInfo      map[*int]int  // Current estate info for passing
+	ScreenWidth     int
+	ScreenHeight    int
+}
+
+func NewGameOverModel(gm *game.GameManager, finalEstate float64, finalKills int, lbData []PlayerScore, estateInfo map[*int]int, screenWidth, screenHeight int) GameOverModel {
+	return GameOverModel{
+		GameManager:     gm,
+		FinalEstate:     finalEstate,
+		FinalKills:      finalKills,
+		SelectedButton:  0, // Default to EXIT
+		LeaderboardData: lbData,
+		EstateInfo:      estateInfo,
+		ScreenWidth:     screenWidth,
+		ScreenHeight:    screenHeight,
+	}
+}
+
+func (m GameOverModel) Init() tea.Cmd {
+	return nil
+}
+
+func (m GameOverModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if msg, ok := msg.(tea.KeyMsg); ok {
+		switch msg.String() {
+		case "left", "h":
+			m.SelectedButton = max(0, m.SelectedButton-1)
+		case "right", "l":
+			m.SelectedButton = min(1, m.SelectedButton+1)
+		case "enter":
+			if m.SelectedButton == 0 {
+				// EXIT was selected, signal the controller to return to the Intro screen
+				return m, func() tea.Msg { return ReturnToIntroMsg{} }
+			} else {
+				// LEADERBOARD was selected, signal the controller to switch screens
+				return m, func() tea.Msg {
+					return ShowLeaderboardFromGameOverMsg{
+						LeaderboardData: m.LeaderboardData,
+						EstateInfo:      m.EstateInfo,
+					}
+				}
+			}
+		case "esc":
+			// Default ESC to EXIT action
+			return m, func() tea.Msg { return ReturnToIntroMsg{} }
+		}
+	}
+	return m, nil
+}
+
+func (m GameOverModel) View() string {
 	messageStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("9")).
 		Padding(2, 5).
 		Align(lipgloss.Center).
-		Width(g.ScreenWidth - 4)
+		Width(m.ScreenWidth - 4)
 
-	title := messageStyle.Render(" G A M E   O V E R ")
+	title := messageStyle.Render(" Good Game! ")
 
-	stats := fmt.Sprintf("\nFinal Stats:\n Land Claimed: %.2f%% \nPlayer Kills: %d\n\n", g.FinalEstate, g.FinalKills)
+	stats := fmt.Sprintf("\nFinal Stats:\n Land Claimed: %.2f%% \nPlayer Kills: %d\n\n", m.FinalEstate, m.FinalKills)
 
 	exitButton := buttonStyle.Render("EXIT (Enter)")
 	leaderboardButton := buttonStyle.Render("LEADERBOARD")
 
-	if g.SelectedButton == 0 {
-		exitButton = selectedButtonStyle.Render("EXIT (Enter)")
+	if m.SelectedButton == 0 {
+		exitButton = submitButtonStyle.Render("EXIT (Enter)")
 	} else {
-		leaderboardButton = selectedButtonStyle.Render("LEADERBOARD")
+		leaderboardButton = submitButtonStyle.Render("LEADERBOARD")
 	}
 
 	buttons := lipgloss.JoinHorizontal(lipgloss.Center, exitButton, leaderboardButton)
 
 	content := lipgloss.JoinVertical(lipgloss.Center, title, stats, buttons)
 
-	// Center the content on the screen
-	return lipgloss.Place(g.ScreenWidth, g.ScreenHeight,
+	return lipgloss.Place(m.ScreenWidth, m.ScreenHeight,
 		lipgloss.Center, lipgloss.Center,
 		lipgloss.NewStyle().Border(lipgloss.ThickBorder()).Render(content),
 	)
 }
 
-// RenderLeaderboardScreen draws the current leaderboard table.
-func (g *GameOverState) RenderLeaderboardScreen(estateInfo map[*int]int) string {
+// --- LEADERBOARD MODEL ---
+// Dedicated model for the Leaderboard screen.
+
+type LeaderboardModel struct {
+	tea.Model
+	GameManager  *game.GameManager
+	EstateInfo   map[*int]int
+	Leaderboard  []PlayerScore
+	ScreenWidth  int
+	ScreenHeight int
+}
+
+func NewLeaderboardModel(gm *game.GameManager, estateInfo map[*int]int, leaderboardData []PlayerScore, screenWidth, screenHeight int) LeaderboardModel {
+	return LeaderboardModel{
+		GameManager:  gm,
+		EstateInfo:   estateInfo,
+		Leaderboard:  leaderboardData,
+		ScreenWidth:  screenWidth,
+		ScreenHeight: screenHeight,
+	}
+}
+
+func (m LeaderboardModel) Init() tea.Cmd {
+	return nil
+}
+
+func (m LeaderboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if msg, ok := msg.(tea.KeyMsg); ok {
+		switch msg.String() {
+		case "esc", "enter":
+			// Signal the Controller to change screen back to Game Over or Intro
+			return m, func() tea.Msg { return ReturnFromLeaderboardMsg{} }
+		}
+	}
+	return m, nil
+}
+
+func (m LeaderboardModel) View() string {
 	var tableContent strings.Builder
 
-	type PlayerScore struct {
+	type PlayerScoreForDisplay struct {
 		Name   string
 		Color  int
-		Estate int
+		Estate int // Use raw tile count for sorting/display
 	}
 
-	var scores []PlayerScore
-	// Collect scores from the game manager and the passed estate info
-	g.GameManager.Players.Range(func(key, value interface{}) bool {
-		player := value.(*game.Player)
-		if player != nil {
-			estate, found := estateInfo[player.Color]
-			if !found {
-				estate = 0
+	var scores []PlayerScoreForDisplay
+	// Reconstruct the scores list with current estate size from the EstateInfo map
+	for _, pScore := range m.Leaderboard {
+		var estate int
+		found := false
+		for colorPtr, value := range m.EstateInfo {
+			if *colorPtr == pScore.Color {
+				estate = value
+				found = true
+				break
 			}
-			scores = append(scores, PlayerScore{
-				Name:   player.Name,
-				Color:  *player.Color,
-				Estate: estate,
-			})
 		}
-		return true
+		if !found {
+			// If estate info is missing, use the Land value which is the raw tile count from GameView's PlayerScore struct
+			estate = int(pScore.Land)
+		}
+
+		scores = append(scores, PlayerScoreForDisplay{
+			Name:   pScore.Name,
+			Color:  pScore.Color,
+			Estate: estate,
+		})
+	}
+
+	// Sort by Estate (total claimed tiles)
+	sort.Slice(scores, func(i, j int) bool {
+		return scores[i].Estate > scores[j].Estate
 	})
 
-	// NOTE: Add sorting logic here if desired!
-
-	// Define column widths for alignment
 	nameWidth := 15
 	estateWidth := 10
 
-	// --- Header ---
 	header := lipgloss.JoinHorizontal(lipgloss.Top,
 		leaderboardHeaderStyle.Width(3).Render("#"),
 		leaderboardHeaderStyle.Width(nameWidth).Render("Player"),
 		leaderboardHeaderStyle.Width(estateWidth).Render("Estate"),
 	)
 	tableContent.WriteString(header + "\n")
-
-	// --- Rows ---
 	for i, score := range scores {
 		rank := i + 1
-
-		// Use the player's color for their row text
 		colorStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color(strconv.Itoa(score.Color)))
 
@@ -136,9 +227,8 @@ func (g *GameOverState) RenderLeaderboardScreen(estateInfo map[*int]int) string 
 		tableContent.WriteString(leaderboardBorderStyle.Render(row) + "\n")
 	}
 
-	// --- Title & Instructions ---
 	title := lipgloss.NewStyle().Bold(true).Padding(1, 0).Render("CURRENT LEADERBOARD")
-	instruction := lipgloss.NewStyle().Faint(true).Margin(1, 0).Render("Press ESC or ENTER to return to Game Over screen.")
+	instruction := lipgloss.NewStyle().Faint(true).Margin(1, 0).Render("Press ESC or ENTER to return.")
 
 	finalContent := lipgloss.JoinVertical(lipgloss.Center,
 		title,
@@ -146,7 +236,7 @@ func (g *GameOverState) RenderLeaderboardScreen(estateInfo map[*int]int) string 
 		instruction,
 	)
 
-	return lipgloss.Place(g.ScreenWidth, g.ScreenHeight,
+	return lipgloss.Place(m.ScreenWidth, m.ScreenHeight,
 		lipgloss.Center, lipgloss.Center,
 		lipgloss.NewStyle().Border(lipgloss.ThickBorder()).Render(finalContent),
 	)

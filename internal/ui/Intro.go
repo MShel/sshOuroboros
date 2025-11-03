@@ -46,25 +46,35 @@ func (m IntroModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// --- Styles and ASCII Art ---
-
-var snakeAscii = strings.TrimSpace(`
-      \ \ \ \
-       \ \ \ \
-        \ \ \ \
-       / / / /
-      / / / /
-     / / / /
-`)
+var ouroborosAscii = `
+               ██████████████                                      ██████████████                 
+            ██████          ██████                            ████████          ██████            
+         ████                    ████                      ████                      ████         
+     ███                               ███            ███                                 ███     
+    ███        ██████████████            ███    ███████            ██████████████          ███    
+   ██       ████            ████           █████                ████            ████         ██   
+  ██      ███                  ████     ████                 ███                   ███        ██  
+ ██      ██                       ███ ███                  ███                       ██        ██ 
+ ██     ██                          ███   ██             ███                          ██       ██ 
+██     ███                         ███  █ ██       ██   ██                            ███       ██
+██     ██                         ██            ████    ██                             ██       ██
+██     ██                        ██          ██████    ██                              ██       ██
+██     ██                       ██ █     ████    ██   ███                              ██       ██
+██     ███                      █     ████      ██   █████                             ██       ██
+ ██     ██                      ███ █████      ██   ██   ███                          ██       ██ 
+ ██     ██                       ████████    ██  ███      ███                       ██        ██ 
+  ██      ███                   ███       █  ██████          ███                   ███        ██  
+   ██      ████            ████           █████  ███           ████            ████         ██   
+    ██        ████████████            ███        ███            ██████████████          ███    
+     ███                             ███            ███                              ███     
+         ████                      ████                ████                      ████         
+            ██████          ██████                         ██████            ████           
+                 ████████████                                    ███████████                
+`
 
 var (
 	asciiStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("87"))
-
-	introTitleStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("87")).
-			MarginBottom(1)
 
 	introButtonStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("0")).
@@ -79,16 +89,10 @@ var (
 
 func (m IntroModel) View() string {
 	var sb strings.Builder
-
-	// ASCII Art
-	sb.WriteString(asciiStyle.Render(snakeAscii))
+	sb.WriteString("\n")
+	sb.WriteString(asciiStyle.Render(ouroborosAscii))
 	sb.WriteString("\n")
 
-	// Title
-	sb.WriteString(introTitleStyle.Render("Welcome to SSHnake"))
-	sb.WriteString("\n\n")
-
-	// Buttons
 	register := introButtonStyle.Render("Start Registration")
 	leaderboard := introButtonStyle.Render("View Leaderboard")
 
