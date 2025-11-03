@@ -3,6 +3,7 @@ package ui
 import (
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Mshel/sshnake/internal/game"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -10,7 +11,14 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Define styles
+type ColorRefreshMsg struct{}
+
+func periodicColorRefresh() tea.Cmd {
+	return tea.Tick(time.Second*5, func(t time.Time) tea.Msg {
+		return ColorRefreshMsg{}
+	})
+}
+
 var (
 	focusedColor = lipgloss.Color("205") // Bright Pink/Purple
 	blurredColor = lipgloss.Color("240")
@@ -74,7 +82,10 @@ func NewInitialSetupModel(gameManager *game.GameManager, w, h int) SetupModel {
 
 // Init sends a command to start the cursor blinking
 func (m SetupModel) Init() tea.Cmd {
-	return textinput.Blink
+	return tea.Batch(
+		textinput.Blink,
+		periodicColorRefresh(), // Start the periodic refresh
+	)
 }
 
 // Update handles messages (key presses, window resizes, etc.)
@@ -91,6 +102,9 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.colorOptions = colorOptions
 
 	switch msg := msg.(type) {
+	case ColorRefreshMsg:
+		return m, periodicColorRefresh()
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height

@@ -96,7 +96,7 @@ func (gm *GameManager) StartGameLoop() {
 	for w := 1; w <= sunsetWorkersCount; w++ {
 		go gm.sunsetPlayersWorker()
 	}
-	singletonGameManager.intializeBotControledPlayers(10)
+	singletonGameManager.intializeBotControledPlayers(3)
 
 	rebirthWorkerCount := 1
 	for w := 1; w <= rebirthWorkerCount; w++ {
