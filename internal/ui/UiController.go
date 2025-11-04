@@ -111,9 +111,7 @@ func (m ControllerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.SetupModel.Init()
 		case 1:
 			m.CurrentScreen = LeaderboardScreen
-			tempGameModel := NewGameModel(m.GameManager, nil, m.ScreenWidth, m.ScreenHeight)
-			initialData := tempGameModel.calculateLeaderboard()
-			m.LeaderboardModel = NewLeaderboardModel(m.GameManager, map[*int]int{}, initialData, m.ScreenWidth, m.ScreenHeight)
+			m.LeaderboardModel = NewLeaderboardModel(game.NewHighScoreService(), m.ScreenWidth, m.ScreenHeight)
 			return m, m.LeaderboardModel.Init()
 		}
 
@@ -132,7 +130,7 @@ func (m ControllerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ShowLeaderboardFromGameOverMsg:
 		m.CurrentScreen = LeaderboardScreen
-		m.LeaderboardModel = NewLeaderboardModel(m.GameManager, msg.EstateInfo, msg.LeaderboardData, m.ScreenWidth, m.ScreenHeight)
+		m.LeaderboardModel = NewLeaderboardModel(game.NewHighScoreService(), m.ScreenWidth, m.ScreenHeight)
 		return m, m.LeaderboardModel.Init()
 
 	case ReturnFromLeaderboardMsg:

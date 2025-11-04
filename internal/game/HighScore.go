@@ -19,7 +19,7 @@ const tableName = "high_scores"
 type Score struct {
 	ID          int
 	PlayerName  string
-	ClaimedLand int
+	ClaimedLand float64 // Updated type to match the REAL type in the database schema
 	Kills       int
 	CreatedAt   time.Time
 }
@@ -74,6 +74,7 @@ func (serviceImpl *HighScoreService) SavePlayersHighScore(playerName string,
 	return nil
 }
 
+// GetHighScores retrieves a paginated list of scores, ordered by claimed land and kills.
 func (serviceImpl *HighScoreService) GetHighScores(limit, offset int) ([]Score, error) {
 	const selectSQL = `
 	SELECT id, player_name, claimed_land, kills, created_at
@@ -88,6 +89,7 @@ func (serviceImpl *HighScoreService) GetHighScores(limit, offset int) ([]Score, 
 	defer rows.Close()
 
 	var scores []Score
+
 	for rows.Next() {
 		var score Score
 		var createdAt string // Read as string from DB
@@ -95,9 +97,13 @@ func (serviceImpl *HighScoreService) GetHighScores(limit, offset int) ([]Score, 
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan row: %w", err)
 		}
-		dateTimeCreatedAt, err := time.Parse("2006-01-02 15:04:05", createdAt)
+
+		dateTimeCreatedAt, err := time.Parse(time.RFC3339, createdAt)
 		if err == nil {
 			score.CreatedAt = dateTimeCreatedAt
+		} else {
+			// Log the error to help debug if the format is still incorrect
+			log.Printf("Time parsing error for score (ID %d, Name %s): %v, raw string: %s", score.ID, score.PlayerName, err, createdAt)
 		}
 		scores = append(scores, score)
 	}
