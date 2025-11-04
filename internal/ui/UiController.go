@@ -94,9 +94,7 @@ func (m ControllerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.CurrentUserSession != nil {
 				if anyPlayer, ok := m.GameManager.SessionsToPlayers.Load(m.CurrentUserSession); ok {
 					if anyPlayer != nil {
-						player := anyPlayer.(*game.Player)
 						m.GameManager.SessionsToPlayers.Delete(m.CurrentUserSession)
-						m.GameManager.SunsetPlayersChannel <- player
 					}
 				}
 			}

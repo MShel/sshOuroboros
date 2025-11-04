@@ -24,7 +24,6 @@ func getNewSpaceFiller(gameMap [][]*Tile) *SpaceFiller {
 		SpaceFillerWg:   &sync.WaitGroup{},
 	}
 
-	spaceFillerChannelWorkers := 256
 	for w := 0; w < spaceFillerChannelWorkers; w++ {
 		go spaceFiller.spaceFillWorker()
 	}

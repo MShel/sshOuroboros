@@ -79,10 +79,8 @@ func (m GameOverModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.SelectedButton = min(1, m.SelectedButton+1)
 		case "enter":
 			if m.SelectedButton == 0 {
-				// EXIT was selected, signal the controller to return to the Intro screen
-				return m, func() tea.Msg { return ReturnToIntroMsg{} }
+				return m, func() tea.Msg { return QuitGameMsg{} }
 			} else {
-				// LEADERBOARD was selected, signal the controller to switch screens
 				return m, func() tea.Msg {
 					return ShowLeaderboardFromGameOverMsg{
 						LeaderboardData: m.LeaderboardData,
@@ -91,8 +89,7 @@ func (m GameOverModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "esc":
-			// Default ESC to EXIT action
-			return m, func() tea.Msg { return ReturnToIntroMsg{} }
+			return m, func() tea.Msg { return QuitGameMsg{} }
 		}
 	}
 	return m, nil
@@ -100,8 +97,6 @@ func (m GameOverModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m GameOverModel) View() string {
 	messageStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("9")).
 		Padding(2, 5).
 		Align(lipgloss.Center).
 		Width(m.ScreenWidth - 4)
@@ -128,9 +123,6 @@ func (m GameOverModel) View() string {
 		lipgloss.NewStyle().Border(lipgloss.ThickBorder()).Render(content),
 	)
 }
-
-// --- LEADERBOARD MODEL ---
-// Dedicated model for the Leaderboard screen.
 
 type LeaderboardModel struct {
 	tea.Model

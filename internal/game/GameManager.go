@@ -5,7 +5,6 @@ import (
 	"log"
 	"math"
 	"math/rand"
-	"strconv"
 	"sync"
 	"time"
 
@@ -32,21 +31,19 @@ type ClaimedEstateMsg struct {
 type GameManager struct {
 	Players           sync.Map
 	SessionsToPlayers sync.Map
-	GameMap           [][]*Tile
+
+	GameMap [][]*Tile
 
 	SpaceFillerService *SpaceFiller
-
-	DirectionChannel     chan Direction
-	SunsetPlayersChannel chan *Player
-	PlayerRebirth        chan int
+	PlayerManager      *PlayerManager
+	DirectionChannel   chan Direction
 
 	IsRunning     bool
 	MapMutex      sync.RWMutex
 	cancelContext context.CancelFunc
 	GameContext   context.Context
 
-	HighScoreService *HighScoreService
-	BotStrategyWg    *sync.WaitGroup
+	BotStrategyWg *sync.WaitGroup
 }
 
 var singletonGameManager *GameManager
@@ -61,17 +58,15 @@ func GetNewGameManager() *GameManager {
 	gameContex, cancel := context.WithCancel(context.Background()) // Create cancellable context
 
 	singletonGameManager = &GameManager{
-		DirectionChannel:     make(chan Direction, 1),
-		SunsetPlayersChannel: make(chan *Player, 1),
-		PlayerRebirth:        make(chan int, 1),
-		IsRunning:            false,
-		cancelContext:        cancel,
-		GameContext:          gameContex,
-		BotStrategyWg:        &sync.WaitGroup{},
-		HighScoreService:     NewHighScoreService(),
+		DirectionChannel: make(chan Direction, 1),
+		IsRunning:        false,
+		cancelContext:    cancel,
+		GameContext:      gameContex,
+		BotStrategyWg:    &sync.WaitGroup{},
 	}
 	singletonGameManager.GameMap = getInitGameMap()
 	singletonGameManager.SpaceFillerService = getNewSpaceFiller(singletonGameManager.GameMap)
+	singletonGameManager.PlayerManager = NewPlayerManager(singletonGameManager)
 
 	return singletonGameManager
 }
@@ -94,16 +89,8 @@ func (gm *GameManager) StartGameLoop() {
 		return
 	}
 	gm.IsRunning = true
-	sunsetWorkersCount := 50
-	for w := 1; w <= sunsetWorkersCount; w++ {
-		go gm.sunsetPlayersWorker()
-	}
-	singletonGameManager.intializeBotControledPlayers(3)
 
-	rebirthWorkerCount := 1
-	for w := 1; w <= rebirthWorkerCount; w++ {
-		go gm.rebirthPlayersWorker()
-	}
+	singletonGameManager.intializeBotControledPlayers(botCount)
 
 	ticker := time.NewTicker(GameTickDuration)
 	defer ticker.Stop()
@@ -127,7 +114,6 @@ func (gm *GameManager) StopGameLoop() {
 	gm.IsRunning = false
 	gm.cancelContext()
 	close(gm.DirectionChannel)
-	close(gm.SunsetPlayersChannel)
 }
 
 func (gm *GameManager) processPlayerInput(dir Direction) {
@@ -154,7 +140,7 @@ func (gm *GameManager) processGameTick() {
 			nextTile := player.GetNextTile()
 			if IsWall(nextTile.Y, nextTile.X) {
 				player.isDead = true
-				gm.SunsetPlayersChannel <- player
+				gm.PlayerManager.SunsetPlayersChannel <- player
 				return true
 			}
 
@@ -177,14 +163,14 @@ func (gm *GameManager) processGameTick() {
 					player.Kills += 1
 					nextTileOwner.Kills += 1
 
-					gm.SunsetPlayersChannel <- nextTileOwner
-					gm.SunsetPlayersChannel <- player
+					gm.PlayerManager.SunsetPlayersChannel <- nextTileOwner
+					gm.PlayerManager.SunsetPlayersChannel <- player
 					return true
 				}
 
 				if nextTile.IsTail {
 					nextTileOwner.isDead = true
-					gm.SunsetPlayersChannel <- nextTileOwner
+					gm.PlayerManager.SunsetPlayersChannel <- nextTileOwner
 
 					player.Kills += 1
 					nextTile.OwnerColor = player.Color
@@ -242,7 +228,7 @@ func (gm *GameManager) CreateNewPlayer(playerName string, playerColor int, userS
 	spawnTile := gm.getSpawnTile()
 	newPlayer := CreateNewPlayer(userSession, playerName, playerColor, spawnTile)
 	if player, ok := gm.Players.Load(playerColor); ok {
-		gm.sunsetPlayer(player.(*Player), false)
+		gm.PlayerManager.sunsetPlayer(player.(*Player), false)
 	}
 
 	gm.Players.Store(playerColor, newPlayer)
@@ -299,81 +285,6 @@ func (gm *GameManager) getSpawnTile() *Tile {
 	return bestTile
 }
 
-func (gm *GameManager) sunsetPlayersWorker() {
-	for {
-		player, ok := <-gm.SunsetPlayersChannel
-		if !ok {
-			return
-		}
-		if player != nil {
-			gm.sunsetPlayer(player, true)
-		}
-	}
-}
-
-func (gm *GameManager) sunsetPlayer(player *Player, needRebirth bool) {
-	playerFinalClaimedLand := 0.0
-	player.AllTiles.allTilesLock.Lock()
-	player.Tail.tailLock.Lock()
-	defer player.AllTiles.allTilesLock.Unlock()
-	defer player.Tail.tailLock.Unlock()
-
-	for _, tile := range player.AllTiles.AllPlayerTiles {
-		if tile.OwnerColor == player.Color {
-			playerFinalClaimedLand += 1.0
-			tile.OwnerColor = nil
-		}
-	}
-	for _, tile := range player.Tail.tailTiles {
-		if tile.OwnerColor == player.Color {
-			tile.OwnerColor = nil
-		}
-	}
-
-	player.Location.IsTail = false
-	player.Location.OwnerColor = nil
-
-	if player.SshSession != nil {
-		highScoreError := gm.HighScoreService.SavePlayersHighScore(
-			player.Name,
-			*player.Color,
-			(playerFinalClaimedLand*100)/float64(MapColCount*MapRowCount),
-			player.Kills,
-		)
-
-		if highScoreError != nil {
-			log.Printf("High score persist err: %v ", highScoreError)
-		}
-
-		player.UpdateChannel <- PlayerDeadMsg{
-			PlayerColor:        *player.Color,
-			FinalClaimedEstate: playerFinalClaimedLand,
-			FinalKills:         player.Kills,
-		}
-	}
-
-	gm.Players.Delete(*player.Color)
-
-	if needRebirth {
-		gm.PlayerRebirth <- *player.Color
-	}
-
-}
-
-func (gm *GameManager) rebirthPlayersWorker() {
-	for {
-		playerColorInt, ok := <-gm.PlayerRebirth
-		if !ok {
-			return
-		}
-		if playerColorInt != 0 {
-			botPlayer := CreateNewPlayer(nil, "derp"+strconv.Itoa(playerColorInt), playerColorInt, gm.getSpawnTile())
-			botPlayer.BotStrategy = defaultStrategy
-			gm.Players.Store(playerColorInt, botPlayer)
-		}
-	}
-}
-
 func (gm *GameManager) isOtherPlayerTail(tile *Tile, playerColor *int) bool {
 	return tile.IsTail && tile.OwnerColor != nil && playerColor != tile.OwnerColor
 }
@@ -386,7 +297,7 @@ func (gm *GameManager) intializeBotControledPlayers(botCount int) {
 			continue
 		}
 
-		botPlayer := CreateNewPlayer(nil, "derp"+strconv.Itoa(botId), botId, gm.getSpawnTile())
+		botPlayer := CreateNewPlayer(nil, funnyBotNames[botId], botId, gm.getSpawnTile())
 		botPlayer.BotStrategy = defaultStrategy
 		gm.Players.Store(botId, botPlayer)
 	}
