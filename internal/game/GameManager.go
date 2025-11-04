@@ -45,7 +45,8 @@ type GameManager struct {
 	cancelContext context.CancelFunc
 	GameContext   context.Context
 
-	BotStrategyWg *sync.WaitGroup
+	HighScoreService *HighScoreService
+	BotStrategyWg    *sync.WaitGroup
 }
 
 var singletonGameManager *GameManager
@@ -67,6 +68,7 @@ func GetNewGameManager() *GameManager {
 		cancelContext:        cancel,
 		GameContext:          gameContex,
 		BotStrategyWg:        &sync.WaitGroup{},
+		HighScoreService:     NewHighScoreService(),
 	}
 	singletonGameManager.GameMap = getInitGameMap()
 	singletonGameManager.SpaceFillerService = getNewSpaceFiller(singletonGameManager.GameMap)
@@ -332,12 +334,24 @@ func (gm *GameManager) sunsetPlayer(player *Player, needRebirth bool) {
 	player.Location.OwnerColor = nil
 
 	if player.SshSession != nil {
+		highScoreError := gm.HighScoreService.SavePlayersHighScore(
+			player.Name,
+			*player.Color,
+			(playerFinalClaimedLand*100)/float64(MapColCount*MapRowCount),
+			player.Kills,
+		)
+
+		if highScoreError != nil {
+			log.Printf("High score persist err: %v ", highScoreError)
+		}
+
 		player.UpdateChannel <- PlayerDeadMsg{
 			PlayerColor:        *player.Color,
 			FinalClaimedEstate: playerFinalClaimedLand,
 			FinalKills:         player.Kills,
 		}
 	}
+
 	gm.Players.Delete(*player.Color)
 
 	if needRebirth {

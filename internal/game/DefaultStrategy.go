@@ -4,10 +4,8 @@ import (
 	"math"
 )
 
-// DefaultStrategy implements the Strategy interface.
 type DefaultStrategy struct{}
 
-// getNextBestDirection determines the best move for the bot based on a strict priority hierarchy.
 func (s *DefaultStrategy) getNextBestDirection(player *Player, gm *GameManager) Direction {
 
 	if player.isDead {
@@ -17,7 +15,6 @@ func (s *DefaultStrategy) getNextBestDirection(player *Player, gm *GameManager) 
 	currentTile := player.Location
 	validMoves := make(map[Direction]*Tile)
 
-	// --- 1. Filter and Collect All Valid Moves (Wall and Collision Avoidance) ---
 	for _, dirCoords := range Directions {
 		dx, dy := dirCoords[1], dirCoords[0]
 		nextX := currentTile.X + dx
@@ -25,29 +22,25 @@ func (s *DefaultStrategy) getNextBestDirection(player *Player, gm *GameManager) 
 
 		dir := Direction{Dx: dx, Dy: dy, PlayerColor: *player.Color}
 
-		// Prevent moving backwards
 		if dx == -player.CurrentDirection.Dx && dy == -player.CurrentDirection.Dy {
 			continue
 		}
 
-		// Wall check
 		if IsWall(nextY, nextX) {
 			continue
 		}
 
 		nextTile := gm.GameMap[nextY][nextX]
 
-		// Check for collision with opponent's head
 		isOpponentHead := false
 		gm.Players.Range(func(key, value interface{}) bool {
 			if otherPlayer, ok := value.(*Player); ok && otherPlayer != nil {
-				// We compare the sync.Map key (int color) to the current player's color
 				if key.(int) != *player.Color && otherPlayer.Location == nextTile {
 					isOpponentHead = true
-					return false // Stop iteration if opponent head found
+					return false
 				}
 			}
-			return true // Continue iteration
+			return true
 		})
 
 		if isOpponentHead {
@@ -58,17 +51,15 @@ func (s *DefaultStrategy) getNextBestDirection(player *Player, gm *GameManager) 
 	}
 
 	if len(validMoves) == 0 {
-		return player.CurrentDirection // Trapped
+		return player.CurrentDirection
 	}
 
-	// P1: Attack (Tail Collision)
 	for dir, tile := range validMoves {
 		if gm.isOtherPlayerTail(tile, player.Color) {
 			return dir
 		}
 	}
 
-	// P2: Loop Closure
 	var bestClosingDir Direction
 	maxGain := -1
 	isThreatened := s.calculateThreatScore(player, gm) > 0
@@ -77,7 +68,6 @@ func (s *DefaultStrategy) getNextBestDirection(player *Player, gm *GameManager) 
 		if tile.OwnerColor != nil && *tile.OwnerColor == *player.Color {
 			estimatedGain := s.estimateTerritoryGain(player)
 
-			// Only close the loop if we have a decent tail length or are currently threatened
 			if estimatedGain >= 1 || isThreatened {
 				if estimatedGain > maxGain {
 					maxGain = estimatedGain
@@ -91,12 +81,10 @@ func (s *DefaultStrategy) getNextBestDirection(player *Player, gm *GameManager) 
 		return bestClosingDir
 	}
 
-	// P3: Flee if threatened
 	if isThreatened {
 		return s.getSafestFleeDirection(player, gm, validMoves)
 	}
 
-	// P4: Expand toward claimed territory (default expansion logic)
 	bestDir := player.CurrentDirection
 	minDistToClaimed := math.MaxInt32
 
@@ -116,12 +104,10 @@ func (s *DefaultStrategy) getNextBestDirection(player *Player, gm *GameManager) 
 			dist = GetManhattanDistance(tile, nearestClaimedTile)
 		}
 
-		// Prefer continuing in the same direction (inertia)
 		if dir.Dx == player.CurrentDirection.Dx && dir.Dy == player.CurrentDirection.Dy {
 			dist -= 2
 		}
 
-		// Avoid expanding too far from the center if the tail is long
 		if len(player.Tail.tailTiles) > 5 {
 			distToCenter := GetManhattanDistance(tile, centerTile)
 			currentDistToCenter := GetManhattanDistance(currentTile, centerTile)
@@ -194,7 +180,6 @@ func (s *DefaultStrategy) getSafestFleeDirection(player *Player, gm *GameManager
 	bestFleeDir := player.CurrentDirection
 	maxOpponentDistance := -1
 
-	// Initialize best direction with the first valid move
 	for dir := range validMoves {
 		bestFleeDir = dir
 		break
@@ -210,7 +195,6 @@ func (s *DefaultStrategy) getSafestFleeDirection(player *Player, gm *GameManager
 			maxOpponentDistance = distToOpponent
 			bestFleeDir = dir
 		} else if distToOpponent == maxOpponentDistance {
-			// Tiebreaker: choose the one closest to our claimed territory
 			if nearestClaimedTile != nil {
 				distToBase := GetManhattanDistance(tile, nearestClaimedTile)
 				if distToBase < minBaseDistance {
@@ -230,7 +214,6 @@ func (s *DefaultStrategy) getBestExpansionDirection(player *Player, gm *GameMana
 
 	nearestClaimedTile := s.findNearestClaimedTile(player.Location, player.Color, gm)
 
-	// Initialize best direction with the first valid move
 	for dir := range validMoves {
 		bestDir = dir
 		break
@@ -273,9 +256,8 @@ func (s *DefaultStrategy) findNearestOpponentHead(player *Player, gm *GameManage
 
 	gm.Players.Range(func(key, value interface{}) bool {
 		if otherPlayer, ok := value.(*Player); ok && otherPlayer != nil {
-			// Compare map key (int color)
 			if key.(int) == *player.Color {
-				return true // Skip current player
+				return true
 			}
 
 			dist := GetManhattanDistance(player.Location, otherPlayer.Location)
@@ -284,7 +266,7 @@ func (s *DefaultStrategy) findNearestOpponentHead(player *Player, gm *GameManage
 				nearestHead = otherPlayer.Location
 			}
 		}
-		return true // Continue iteration
+		return true
 	})
 
 	return nearestHead
@@ -299,9 +281,8 @@ func (s *DefaultStrategy) calculateThreatScore(player *Player, gm *GameManager) 
 	totalThreat := 0
 	gm.Players.Range(func(key, value interface{}) bool {
 		if otherPlayer, ok := value.(*Player); ok && otherPlayer != nil {
-			// Compare map key (int color)
 			if key.(int) == *player.Color {
-				return true // Skip current player
+				return true
 			}
 
 			opponentHead := otherPlayer.Location
@@ -319,7 +300,7 @@ func (s *DefaultStrategy) calculateThreatScore(player *Player, gm *GameManager) 
 				totalThreat += 500 * threatFactor
 			}
 		}
-		return true // Continue iteration
+		return true
 	})
 
 	return totalThreat
