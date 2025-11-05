@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Mshel/sshnake/internal/game"
+	"github.com/Mshel/ouroboros/internal/game"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/log"

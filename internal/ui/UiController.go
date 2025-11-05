@@ -3,7 +3,7 @@ package ui
 import (
 	"strconv"
 
-	"github.com/Mshel/sshnake/internal/game"
+	"github.com/Mshel/ouroboros/internal/game"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/ssh"
 )
