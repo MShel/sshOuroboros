@@ -30,7 +30,7 @@ var (
 	mapViewStyle = lipgloss.NewStyle().
 			Border(lipgloss.DoubleBorder()).
 			BorderForeground(lipgloss.Color("240")).
-			Padding(0, 0)
+			Padding(0, 0, 0, 0)
 
 	statusPanelStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
@@ -201,8 +201,28 @@ func (m GameViewModel) View() string {
 	mapWidth := int(float64(m.ScreenWidth) * mapViewPercentage)
 	statusPanelWidth := m.ScreenWidth - mapWidth - statusPanelPadding
 
-	mapContent := m.renderMap(currentPlayer, mapWidth, m.ScreenHeight)
-	statusContent := m.renderStatusPanel(currentPlayer, statusPanelWidth)
+	const mapHorizontalOverhead = 2
+	mapContentWidth := mapWidth - mapHorizontalOverhead
+
+	const mapVerticalOverhead = 2
+	const statusPanelVerticalOverhead = 6
+
+	mapContentHeight := m.ScreenHeight - mapVerticalOverhead
+	statusContentHeight := m.ScreenHeight - statusPanelVerticalOverhead
+
+	if mapContentWidth < 0 {
+		mapContentWidth = 0
+	}
+	if mapContentHeight < 0 {
+		mapContentHeight = 0
+	}
+	if statusContentHeight < 0 {
+		statusContentHeight = 0
+	}
+
+	mapContent := m.renderMap(currentPlayer, mapContentWidth, mapContentHeight)
+
+	statusContent := m.renderStatusPanel(currentPlayer, statusPanelWidth, statusContentHeight)
 
 	return lipgloss.JoinHorizontal(lipgloss.Top,
 		mapViewStyle.Width(mapWidth).Height(m.ScreenHeight).Render(mapContent),
@@ -342,23 +362,35 @@ func (m GameViewModel) renderMap(currentPlayer *game.Player, width int, height i
 	return paddedMap
 }
 
-func (m GameViewModel) renderStatusPanel(currentPlayer *game.Player, width int) string {
+func (m GameViewModel) renderStatusPanel(currentPlayer *game.Player, width int, height int) string {
+
 	var statusContent strings.Builder
 
+	// Count of all static lines (excluding the leaderboard list)
+	// Player Stats: 5 lines + 1 blank = 6
+	// Leaderboard Header: 3 lines
+	// Controls: 5 lines
+	const totalStaticLines = 6 + 3 + 5
+
+	// Lines available for leaderboard items
+	linesForLeaderboard := height - totalStaticLines
+
+	// --- Render Top Static Content (Player Stats) ---
+	// (This section remains unchanged from your original code)
 	statusContent.WriteString(lipgloss.NewStyle().Bold(true).Render("--- Player Stats ---\n"))
 	colorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(strconv.Itoa(*currentPlayer.Color)))
 	statusContent.WriteString(fmt.Sprintf("%s%s\n", colorStyle.Render("● "), currentPlayer.Name))
-
 	claimedLand := currentPlayer.GetConsolidateTiles()
 	statusContent.WriteString(fmt.Sprintf("Kills: %d\n", currentPlayer.Kills))
 	statusContent.WriteString(fmt.Sprintf("Claimed: %.2f %% of land\n", claimedLand*100/float64(game.MapColCount*game.MapColCount)))
 	statusContent.WriteString(fmt.Sprintf("Direction: %c\n", headRunes[game.Direction{Dx: currentPlayer.CurrentDirection.Dx, Dy: currentPlayer.CurrentDirection.Dy}]))
+	statusContent.WriteString("\n")
 
-	statusContent.WriteString("\n" + lipgloss.NewStyle().Bold(true).Render("--- Leaderboard(TOP 10) ---") + "\n")
-
+	// --- Render Leaderboard Header Content ---
+	// (This section remains unchanged from your original code)
+	statusContent.WriteString(lipgloss.NewStyle().Bold(true).Render("--- Leaderboard(TOP 10) ---") + "\n")
 	botCount := 0
 	realPlayerCount := 0
-
 	m.gameManager.Players.Range(func(key, value interface{}) bool {
 		player, _ := value.(*game.Player)
 		if player.BotStrategy != nil {
@@ -368,16 +400,31 @@ func (m GameViewModel) renderStatusPanel(currentPlayer *game.Player, width int) 
 		}
 		return true
 	})
-
 	statusContent.WriteString(fmt.Sprintf("PlayerCount: %d\n", realPlayerCount))
 	statusContent.WriteString(fmt.Sprintf("Bots count: %d\n", botCount))
 
-	for i, score := range m.LeaderboardData {
+	// --- Render Leaderboard Items (Limited by height) ---
+
+	// Number of leaderboard items to render: up to 10, but not more than linesForLeaderboard
+	leaderboardItemsToRender := min(10, len(m.LeaderboardData))
+	leaderboardItemsToRender = min(leaderboardItemsToRender, linesForLeaderboard)
+
+	for i := 0; i < leaderboardItemsToRender; i++ {
+		score := m.LeaderboardData[i]
 		colorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(strconv.Itoa(score.Color)))
 		statusContent.WriteString(fmt.Sprintf("%d. %s%s: %.2f %%\n", i+1, colorStyle.Render("● "), score.Name,
 			score.Land*100/float64(game.MapColCount*game.MapColCount)))
 	}
 
+	// Add ellipsis if we had to truncate and there's space for it
+	if leaderboardItemsToRender < len(m.LeaderboardData) && linesForLeaderboard > 0 {
+		if linesForLeaderboard > leaderboardItemsToRender {
+			statusContent.WriteString("...\n")
+		}
+	}
+
+	// --- Render Bottom Static Content (Controls) ---
+	// (This section remains unchanged from your original code)
 	statusContent.WriteString("\n" + lipgloss.NewStyle().Bold(true).Render("--- Controls ---\n"))
 	statusContent.WriteString("WASD / Arrows: Move\n")
 	statusContent.WriteString("Q / Ctrl+C: Quit Game\n")
