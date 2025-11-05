@@ -12,58 +12,39 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Messages for GameOverModel to signal transition back to the Controller
 type ShowLeaderboardFromGameOverMsg struct {
-	LeaderboardData []PlayerScore // Data ready to pass to the LeaderboardModel
-	EstateInfo      map[*int]int  // Estate data ready to pass to the LeaderboardModel
-	// The HighScoreService is now expected to be passed to NewLeaderboardModel externally.
+	LeaderboardData []PlayerScore
+	EstateInfo      map[*int]int
 }
-type ReturnToIntroMsg struct{} // To signal the Controller to go back to Intro/Quit
 
-// Messages for LeaderboardModel to signal transition back to the Controller
+type ReturnToIntroMsg struct{}
 type ReturnFromLeaderboardMsg struct{}
 
-// New message to handle fetching leaderboard data asynchronously
 type LeaderboardScoresMsg struct {
 	Scores      []game.Score
 	TotalScores int
 	Err         error
 }
 
-// Shared Styles
 var (
 	leaderboardHeaderStyle = lipgloss.NewStyle().
-		// Removed Bold(true)
-		Foreground(lipgloss.Color("15")). // Light Gray/White
-		Background(lipgloss.Color("236")).
-		Padding(0, 1). // Keep padding 0, 1 for headers
-		Align(lipgloss.Center)
+				Foreground(lipgloss.Color("15")).
+				Background(lipgloss.Color("236")).
+				Padding(0, 1).
+				Align(lipgloss.Center)
 
 	leaderboardRowStyle = lipgloss.NewStyle().
-				Padding(0, 1) // Keep padding 0, 1 for rows
-
-	// Style to highlight top scores (achievements)
-	highlightStyle = lipgloss.NewStyle().
-		// Removed Bold(true)
-		Foreground(lipgloss.Color("3")).  // Light Gold/Yellow for highlight
-		Background(lipgloss.Color("237")) // Darker background for contrast
-
-	leaderboardBorderStyle = lipgloss.NewStyle().
-				Border(lipgloss.NormalBorder(), false, false, true, false).
-				BorderForeground(lipgloss.Color("8"))
+				Padding(0, 1)
 )
-
-// --- GAME OVER MODEL ---
-// Dedicated model for the Game Over screen. It handles button selection and sends transition messages.
 
 type GameOverModel struct {
 	tea.Model
 	GameManager     *game.GameManager
-	FinalEstate     float64       // Final claimed land percentage
-	FinalKills      int           // Final kill count
-	SelectedButton  int           // 0 for EXIT, 1 for LEADERBOARD
-	LeaderboardData []PlayerScore // Current leaderboard snapshot for passing
-	EstateInfo      map[*int]int  // Current estate info for passing
+	FinalEstate     float64
+	FinalKills      int
+	SelectedButton  int
+	LeaderboardData []PlayerScore
+	EstateInfo      map[*int]int
 	ScreenWidth     int
 	ScreenHeight    int
 }

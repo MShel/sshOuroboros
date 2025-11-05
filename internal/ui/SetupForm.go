@@ -1,9 +1,11 @@
 package ui
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Mshel/sshnake/internal/game"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -43,6 +45,9 @@ var (
 	selectedSwatchBorderStyle = lipgloss.NewStyle().
 					Border(lipgloss.NormalBorder(), false, true, false, true).
 					BorderForeground(lipgloss.Color("220"))
+
+	errorStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("9"))
 )
 
 // Model for our form
@@ -55,11 +60,28 @@ type SetupModel struct {
 	height       int // Terminal height
 	gameManager  *game.GameManager
 	colorOptions []string
+	nameError    error
 	tea.Model
 }
 
 func NewInitialSetupModel(gameManager *game.GameManager, w, h int) SetupModel {
+	// Validator function: checks for max 20 chars and alphanumeric/space characters
+	nameValidator := func(s string) error {
+		if len(s) > 20 {
+			return errors.New("name must be 20 characters or less") // Though CharLimit handles this, good practice to check
+		}
+		// Check for characters that are NOT alphanumeric (letters, numbers) or spaces
+		for _, r := range s {
+			if !unicode.IsLetter(r) && !unicode.IsNumber(r) && !unicode.IsSpace(r) {
+				return errors.New("name must not contain special characters")
+			}
+		}
+		return nil
+	}
+
 	ti := textinput.New()
+	ti.Validate = nameValidator
+
 	ti.Placeholder = "Your Ouroboros Name"
 	ti.Focus()
 	ti.CharLimit = 20
@@ -72,9 +94,10 @@ func NewInitialSetupModel(gameManager *game.GameManager, w, h int) SetupModel {
 		colorIndex:  0,
 		focusIndex:  0,
 		submitted:   false,
-		width:       w, // FIX: Initialize width
-		height:      h, // Initialize height
+		width:       w,
+		height:      h,
 		gameManager: gameManager,
+		nameError:   nil,
 	}
 
 	return setupModel
@@ -142,6 +165,15 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case 2: // Submit Button
 				switch s {
 				case "enter":
+					err := validateName(m.nameInput.Value())
+					if err != nil {
+						m.nameError = err
+						m.focusIndex = 0
+						m.nameInput.Focus()
+						return m, nil
+					}
+
+					m.nameError = nil
 					m.submitted = true
 					return m, func() tea.Msg {
 						return SetupSubmitMsg{
@@ -209,6 +241,11 @@ func (m SetupModel) View() string {
 
 	var b strings.Builder
 
+	if m.nameError != nil {
+		b.WriteString(center(errorStyle.Render("Error: " + m.nameError.Error())))
+		b.WriteString("\n")
+	}
+
 	b.WriteString(center(m.nameInput.View()))
 	b.WriteString("\n\n")
 
@@ -274,4 +311,23 @@ func (m SetupModel) View() string {
 
 	// Final centering (this centers the whole block vertically, but the individual lines are now centered horizontally)
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, b.String())
+}
+
+func validateName(name string) error {
+	trimmedName := strings.TrimSpace(name)
+
+	if len(trimmedName) == 0 {
+		return errors.New("name must be at least 1 character long")
+	}
+
+	if len(name) > 20 {
+		return errors.New("name must be 20 characters or less")
+	}
+
+	for _, r := range name {
+		if !unicode.IsLetter(r) && !unicode.IsNumber(r) && !unicode.IsSpace(r) {
+			return errors.New("name must not contain special characters")
+		}
+	}
+	return nil
 }

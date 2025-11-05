@@ -90,15 +90,7 @@ func (m ControllerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	if msg, ok := msg.(tea.KeyMsg); ok {
 		if msg.String() == "ctrl+c" {
-
-			if m.CurrentUserSession != nil {
-				if anyPlayer, ok := m.GameManager.SessionsToPlayers.Load(m.CurrentUserSession); ok {
-					if anyPlayer != nil {
-						m.GameManager.SessionsToPlayers.Delete(m.CurrentUserSession)
-					}
-				}
-			}
-
+			m.logOutUser()
 			return m, tea.Quit
 		}
 	}
@@ -135,12 +127,15 @@ func (m ControllerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ReturnFromLeaderboardMsg:
 		if m.CurrentUserSession != nil {
-			m.CurrentScreen = GameOverScreen
-			return m, nil
+			if anyPlayer, ok := m.GameManager.SessionsToPlayers.Load(m.CurrentUserSession); ok {
+				if anyPlayer != nil {
+					m.logOutUser()
+					return m, tea.Quit
+				}
+			}
 		}
 
 		m.CurrentScreen = IntroScreen
-		m.CurrentUserSession = nil
 		return m, m.IntroModel.Init()
 
 	case ReturnToIntroMsg:
@@ -189,4 +184,16 @@ func (m ControllerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, tea.Batch(cmds...)
+}
+
+func (m *ControllerModel) logOutUser() {
+
+	if m.CurrentUserSession != nil {
+		if anyPlayer, ok := m.GameManager.SessionsToPlayers.Load(m.CurrentUserSession); ok {
+			if anyPlayer != nil {
+				m.GameManager.SessionsToPlayers.Delete(m.CurrentUserSession)
+			}
+		}
+		m.CurrentUserSession = nil
+	}
 }
