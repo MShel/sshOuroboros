@@ -3,15 +3,12 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
-	"net/http"
+	"net"
 	"os"
 	"os/signal"
-	"runtime/pprof"
+	"sync"
 	"syscall"
 	"time"
-
-	_ "net/http/pprof"
 
 	"github.com/Mshel/sshnake/internal/game"
 	"github.com/Mshel/sshnake/internal/ui"
@@ -24,38 +21,87 @@ import (
 	"github.com/charmbracelet/wish/logging"
 )
 
-func startPprofServer() {
-	// Run pprof server on port 6060. This server is distinct from your main game server.
-	fmt.Println(http.ListenAndServe("localhost:6060", nil))
-}
-
 const (
 	host string = "0.0.0.0"
 	port string = "6996"
+
+	maxConnectionsPerIP = 10
 )
 
-func main() {
-	go startPprofServer()
-	f, err := os.Create("cpu.prof")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer f.Close()
+var (
+	ipCounter = make(map[string]int)
+	ipMutex   sync.Mutex
+)
 
-	if err := pprof.StartCPUProfile(f); err != nil {
-		log.Fatal(err)
+func getIP(remoteAddr net.Addr) string {
+	if addr, ok := remoteAddr.(*net.TCPAddr); ok {
+		return addr.IP.String()
 	}
-	defer pprof.StopCPUProfile()
+	return remoteAddr.String()
+}
+
+func incrementIP(ip string) {
+	ipMutex.Lock()
+	defer ipMutex.Unlock()
+	ipCounter[ip]++
+}
+
+func decrementIP(ip string) {
+	ipMutex.Lock()
+	defer ipMutex.Unlock()
+	ipCounter[ip]--
+	if ipCounter[ip] <= 0 {
+		delete(ipCounter, ip)
+	}
+}
+
+func getCount(ip string) int {
+	ipMutex.Lock()
+	defer ipMutex.Unlock()
+	return ipCounter[ip]
+}
+
+func connectionLimiterAuth(sshContext ssh.Context) bool {
+	log.Debug("Connection Limiter is running for new authenticated session.")
+	ip := getIP(sshContext.RemoteAddr())
+
+	currentCount := getCount(ip)
+
+	if currentCount >= maxConnectionsPerIP {
+		log.Warn("Connection denied: IP limit exceeded", "ip", ip, "attempted_count", currentCount+1, "current_limit", maxConnectionsPerIP)
+		return false
+	}
+
+	incrementIP(ip)
+
+	log.Info("Connection accepted", "ip", ip, "current_count", getCount(ip), "limit", maxConnectionsPerIP)
+	return true
+}
+
+func freeIp(next ssh.Handler) ssh.Handler {
+	return func(s ssh.Session) {
+		ip := getIP(s.RemoteAddr())
+		next(s)
+		decrementIP(ip)
+	}
+}
+
+func main() {
+	log.SetLevel(log.DebugLevel)
 
 	sshPKeyPath := os.Getenv("OUROBOROS_PRIVATE_KEY_PATH")
 
 	sshServer, serverCreateErr := wish.NewServer(
 		wish.WithAddress(host+":"+port),
 		wish.WithHostKeyPath(sshPKeyPath),
+		wish.WithPublicKeyAuth(func(ctx ssh.Context, key ssh.PublicKey) bool {
+			return connectionLimiterAuth(ctx)
+		}),
 		wish.WithMiddleware(
-			bubbletea.Middleware(viewHandler),
-			activeterm.Middleware(),
 			logging.Middleware(),
+			activeterm.Middleware(),
+			bubbletea.Middleware(viewHandler),
+			freeIp,
 		),
 	)
 

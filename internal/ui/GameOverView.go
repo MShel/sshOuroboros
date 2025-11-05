@@ -99,6 +99,23 @@ func (m GameOverModel) View() string {
 
 	title := messageStyle.Render(" Good Game! ")
 
+	rankStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("220")). // Yellow
+		Bold(true).
+		Underline(true)
+	var rankContent strings.Builder
+
+	playerRank, _ := game.NewHighScoreService().GetPlayerRank(m.FinalEstate, m.FinalKills)
+	// Display the rank
+	if playerRank > 0 {
+		rankString := fmt.Sprintf("WOW you took - %s place ", rankStyle.Render(strconv.Itoa(playerRank)))
+		rankContent.WriteString(rankString)
+		rankContent.WriteString("\n\n")
+	} else {
+		// Handle case where rank could not be retrieved
+		rankContent.WriteString("Your rank could not be determined.\n\n")
+	}
+
 	stats := fmt.Sprintf("\nFinal Stats:\n Land Claimed: %.2f%% \nPlayer Kills: %d\n\n", m.FinalEstate, m.FinalKills)
 
 	exitButton := buttonStyle.Render("EXIT (Enter)")
@@ -112,7 +129,7 @@ func (m GameOverModel) View() string {
 
 	buttons := lipgloss.JoinHorizontal(lipgloss.Center, exitButton, leaderboardButton)
 
-	content := lipgloss.JoinVertical(lipgloss.Center, title, stats, buttons)
+	content := lipgloss.JoinVertical(lipgloss.Center, title, rankContent.String(), stats, buttons)
 
 	return lipgloss.Place(m.ScreenWidth, m.ScreenHeight,
 		lipgloss.Center, lipgloss.Center,

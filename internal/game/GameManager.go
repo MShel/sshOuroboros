@@ -24,10 +24,10 @@ type PlayerDeadMsg struct {
 	FinalKills         int
 }
 
-// players estate is recalculated every time for all players once any of them claim any new estate
 type ClaimedEstateMsg struct {
 	PlayersEstate map[*int]int
 }
+
 type GameManager struct {
 	Players           sync.Map
 	SessionsToPlayers sync.Map
@@ -47,8 +47,6 @@ type GameManager struct {
 }
 
 var singletonGameManager *GameManager
-var MapColCount = 700
-var MapRowCount = 500
 
 func GetNewGameManager() *GameManager {
 	if singletonGameManager != nil {

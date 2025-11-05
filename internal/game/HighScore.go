@@ -124,3 +124,22 @@ func (serviceImpl *HighScoreService) GetTotalScoreCount() (int, error) {
 	}
 	return count, nil
 }
+
+func (serviceImpl *HighScoreService) GetPlayerRank(claimedLand float64, kills int) (int, error) {
+	const selectRankSQL = `
+	SELECT COUNT(*) + 1
+	FROM ` + tableName + `
+	WHERE claimed_land > ?
+	   OR (claimed_land = ? AND kills > ?)
+	   OR (claimed_land = ? AND kills = ?);
+	`
+
+	var rank int
+
+	err := serviceImpl.db.QueryRow(selectRankSQL, claimedLand, claimedLand, kills, claimedLand, kills).Scan(&rank)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get player rank: %w", err)
+	}
+
+	return rank, nil
+}
