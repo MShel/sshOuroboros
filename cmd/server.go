@@ -10,8 +10,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Mshel/sshnake/internal/game"
-	"github.com/Mshel/sshnake/internal/ui"
+	"github.com/Mshel/ouroboros/internal/game"
+	"github.com/Mshel/ouroboros/internal/ui"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/log"
 	"github.com/charmbracelet/ssh"

@@ -1,4 +1,4 @@
-module github.com/Mshel/sshnake
+module github.com/Mshel/ouroboros
 
 go 1.24.6
 
