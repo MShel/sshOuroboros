@@ -26,7 +26,7 @@ const (
 	host string = "0.0.0.0"
 	port string = "6996"
 
-	maxConnectionsPerIP = 2
+	maxConnectionsPerIP = 10
 )
 
 var (
