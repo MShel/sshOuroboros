@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"os/signal"
@@ -25,7 +26,7 @@ const (
 	host string = "0.0.0.0"
 	port string = "6996"
 
-	maxConnectionsPerIP = 10
+	maxConnectionsPerIP = 2
 )
 
 var (
@@ -33,11 +34,11 @@ var (
 	ipMutex   sync.Mutex
 )
 
-func getIP(remoteAddr net.Addr) string {
-	if addr, ok := remoteAddr.(*net.TCPAddr); ok {
+func getIP(s ssh.Session) string {
+	if addr, ok := s.RemoteAddr().(*net.TCPAddr); ok {
 		return addr.IP.String()
 	}
-	return remoteAddr.String()
+	return s.RemoteAddr().String()
 }
 
 func incrementIP(ip string) {
@@ -61,28 +62,28 @@ func getCount(ip string) int {
 	return ipCounter[ip]
 }
 
-func connectionLimiterAuth(sshContext ssh.Context) bool {
-	log.Debug("Connection Limiter is running for new authenticated session.")
-	ip := getIP(sshContext.RemoteAddr())
-
-	currentCount := getCount(ip)
-
-	if currentCount >= maxConnectionsPerIP {
-		log.Warn("Connection denied: IP limit exceeded", "ip", ip, "attempted_count", currentCount+1, "current_limit", maxConnectionsPerIP)
-		return false
-	}
-
-	incrementIP(ip)
-
-	log.Info("Connection accepted", "ip", ip, "current_count", getCount(ip), "limit", maxConnectionsPerIP)
-	return true
-}
-
-func freeIp(next ssh.Handler) ssh.Handler {
+func connectionLimiterMiddleware(next ssh.Handler) ssh.Handler {
 	return func(s ssh.Session) {
-		ip := getIP(s.RemoteAddr())
+		log.Debug("ConnectionLimiterMiddleware running for new authenticated session.")
+
+		ip := getIP(s)
+
+		currentCount := getCount(ip)
+
+		if currentCount >= maxConnectionsPerIP {
+			log.Warn("Connection denied: IP limit exceeded", "ip", ip, "attempted_count", currentCount+1, "current_limit", maxConnectionsPerIP)
+			errorMessage := fmt.Sprintf("Too many active connections from your IP (%d/%d). Please try again later.\r\n", currentCount+1, maxConnectionsPerIP)
+			s.Write([]byte(errorMessage))
+			s.Close()
+			return
+		}
+
+		incrementIP(ip)
+
+		log.Info("Connection accepted", "ip", ip, "current_count", getCount(ip), "limit", maxConnectionsPerIP)
 		next(s)
 		decrementIP(ip)
+		log.Info("Connection closed and counter decremented", "ip", ip, "count_after", getCount(ip))
 	}
 }
 
@@ -94,14 +95,11 @@ func main() {
 	sshServer, serverCreateErr := wish.NewServer(
 		wish.WithAddress(host+":"+port),
 		wish.WithHostKeyPath(sshPKeyPath),
-		wish.WithPublicKeyAuth(func(ctx ssh.Context, key ssh.PublicKey) bool {
-			return connectionLimiterAuth(ctx)
-		}),
 		wish.WithMiddleware(
+			bubbletea.Middleware(viewHandler),
 			logging.Middleware(),
 			activeterm.Middleware(),
-			bubbletea.Middleware(viewHandler),
-			freeIp,
+			connectionLimiterMiddleware,
 		),
 	)
 
