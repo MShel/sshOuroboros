@@ -3,7 +3,8 @@
 ![gamePlay](./static/gameRecord.gif)
 
 sshOurboros -- multiplayer game where snake eats itself and grows
-To play go here `ssh web2u.org -p6996`
+
+*To play go here `ssh web2u.org -p6996`*
 
 *The Rules:*
 1. The goal is to claim the most space
