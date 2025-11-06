@@ -135,6 +135,16 @@ func (gm *GameManager) processGameTick() {
 				return true
 			}
 
+			if player.Speed < 0 {
+				if player.ticksSkippedCount < player.Speed*-1 {
+					// we are skipping this tick because we are slow
+					player.ticksSkippedCount += 1
+					return true
+				}
+
+				player.ticksSkippedCount = 0
+			}
+
 			nextTile := player.GetNextTile()
 			if IsWall(nextTile.Y, nextTile.X) {
 				player.isDead = true

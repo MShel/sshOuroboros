@@ -117,11 +117,17 @@ func (m GameViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		if (engineCommand.Dx == -currentPlayer.CurrentDirection.Dx && engineCommand.Dy == -currentPlayer.CurrentDirection.Dy) || (engineCommand == currentPlayer.CurrentDirection) {
-			return m, nil
+		oldSpeed := currentPlayer.Speed
+		if engineCommand.Dx == -currentPlayer.CurrentDirection.Dx && engineCommand.Dy == -currentPlayer.CurrentDirection.Dy {
+			currentPlayer.Speed -= 1
 		}
 
-		if (engineCommand == game.Direction{}) {
+		if engineCommand == currentPlayer.CurrentDirection {
+			currentPlayer.Speed += 1
+		}
+
+		//speed was altered no need to bather with direction switch
+		if oldSpeed != currentPlayer.Speed {
 			return m, nil
 		}
 

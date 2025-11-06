@@ -19,19 +19,21 @@ type AllTiles struct {
 }
 
 type Player struct {
-	Name             string
-	SshSession       ssh.Session
-	Color            *int
-	ClaimedEstate    int
-	Location         *Tile
-	CurrentDirection Direction
-	UpdateChannel    chan tea.Msg
-	BotStrategy      Strategy
-	Kills            int
-	isDead           bool
-	isSafe           bool
-	Tail             Tail
-	AllTiles         AllTiles
+	Name              string
+	SshSession        ssh.Session
+	Color             *int
+	ClaimedEstate     int
+	Location          *Tile
+	CurrentDirection  Direction
+	UpdateChannel     chan tea.Msg
+	BotStrategy       Strategy
+	Kills             int
+	isDead            bool
+	isSafe            bool
+	Speed             int
+	ticksSkippedCount int //this is used if speed is below 0
+	Tail              Tail
+	AllTiles          AllTiles
 }
 
 func CreateNewPlayer(sshSession ssh.Session, name string, color int, spawnPoint *Tile) *Player {
@@ -54,10 +56,12 @@ func CreateNewPlayer(sshSession ssh.Session, name string, color int, spawnPoint 
 			tailTiles: []*Tile{
 				spawnPoint,
 			}},
-		UpdateChannel: make(chan tea.Msg, 256),
-		Kills:         0,
-		isDead:        false,
-		isSafe:        false,
+		UpdateChannel:     make(chan tea.Msg, 256),
+		Kills:             0,
+		isDead:            false,
+		isSafe:            false,
+		Speed:             0,
+		ticksSkippedCount: 0,
 	}
 }
 
