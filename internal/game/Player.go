@@ -65,26 +65,35 @@ func CreateNewPlayer(sshSession ssh.Session, name string, color int, spawnPoint 
 	}
 }
 
-func (p *Player) GetNextTile() *Tile {
-	nextX := p.Location.X + p.CurrentDirection.Dx
-	nextY := p.Location.Y + p.CurrentDirection.Dy
+func (p *Player) GetNextTiles() []*Tile {
+	tilesToGet := max(1, p.Speed)
+	currLocationX := p.Location.X
+	currLocationY := p.Location.Y
+	result := []*Tile{}
 
-	if nextX < 0 {
-		nextX = MapColCount - 1
-	} else if nextX >= MapColCount {
-		nextX = 0
-	}
-	if nextY < 0 {
-		nextY = MapRowCount - 1
-	} else if nextY >= MapRowCount {
-		nextY = 0
+	for range tilesToGet {
+		nextX := currLocationX + p.CurrentDirection.Dx
+		nextY := currLocationY + p.CurrentDirection.Dy
+
+		if nextX < 0 {
+			nextX = MapColCount - 1
+		} else if nextX >= MapColCount {
+			nextX = 0
+		}
+		if nextY < 0 {
+			nextY = MapRowCount - 1
+		} else if nextY >= MapRowCount {
+			nextY = 0
+		}
+
+		if nextY < MapRowCount && nextX < MapColCount {
+			result = append(result, getInitGameMap()[nextY][nextX])
+			currLocationX = nextX
+			currLocationY = nextY
+		}
 	}
 
-	if nextY < MapRowCount && nextX < MapColCount {
-		return getInitGameMap()[nextY][nextX]
-	}
-
-	return nil
+	return result
 }
 
 func (p *Player) resetTailData() {
@@ -115,4 +124,8 @@ func (p *Player) GetConsolidateTiles() float64 {
 
 	p.AllTiles.AllPlayerTiles = updatedTiles
 	return claimedLand
+}
+
+func (p *Player) ResetSpeed() {
+	p.Speed = 0
 }

@@ -7,13 +7,20 @@ sshOurboros -- multiplayer game where snake eats itself and grows
 *To play go here `ssh web2u.org -p6996`*
 
 *The Rules:*
+
 1. The goal is to claim the most space
 2. Secondary goal is to kill as many other snakes as you can
+
 *The how:*
+
 1. To claim space you need to either eat your own tail or reach tiles you've already claimed,
 tiles that are enclosed when you do so become yours!
 2. To kill other snakes you hit their tails
+3. To speed up press arrow of the same direction you going toward mulitple times
+4. To slow down either press "space" or the opposite direction to gradually slow down
+
 *To watchout:*
+
 1. Other players can kill you
 2. Other players can take your tiles.
 

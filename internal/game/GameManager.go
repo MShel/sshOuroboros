@@ -145,79 +145,81 @@ func (gm *GameManager) processGameTick() {
 				player.ticksSkippedCount = 0
 			}
 
-			nextTile := player.GetNextTile()
-			if IsWall(nextTile.Y, nextTile.X) {
-				player.isDead = true
-				gm.PlayerManager.SunsetPlayersChannel <- player
-				return true
-			}
-
-			player.isSafe = false
-
-			if nextTile.OwnerColor != nil && nextTile.OwnerColor != player.Color {
-				nextTileOwnerAny, _ := gm.Players.Load(*nextTile.OwnerColor)
-				if nextTileOwnerAny == nil {
-					return true
-				}
-
-				nextTileOwner := nextTileOwnerAny.(*Player)
-				if nextTileOwner.isDead || nextTileOwner.isSafe {
-					return true
-				}
-
-				if nextTileOwner.Location == nextTile {
-					nextTileOwner.isDead = true
+			nextTiles := player.GetNextTiles()
+			for _, nextTile := range nextTiles {
+				if IsWall(nextTile.Y, nextTile.X) {
 					player.isDead = true
-					player.Kills += 1
-					nextTileOwner.Kills += 1
-
-					gm.PlayerManager.SunsetPlayersChannel <- nextTileOwner
 					gm.PlayerManager.SunsetPlayersChannel <- player
 					return true
 				}
 
-				if nextTile.IsTail {
-					nextTileOwner.isDead = true
-					gm.PlayerManager.SunsetPlayersChannel <- nextTileOwner
+				player.isSafe = false
 
-					player.Kills += 1
-					nextTile.OwnerColor = player.Color
-					nextTile.IsTail = true
-					player.Tail.tailLock.Lock()
-					player.Tail.tailTiles = append(player.Tail.tailTiles, nextTile)
-					player.Tail.tailLock.Unlock()
+				if nextTile.OwnerColor != nil && nextTile.OwnerColor != player.Color {
+					nextTileOwnerAny, _ := gm.Players.Load(*nextTile.OwnerColor)
+					if nextTileOwnerAny == nil {
+						return true
+					}
+
+					nextTileOwner := nextTileOwnerAny.(*Player)
+					if nextTileOwner.isDead || nextTileOwner.isSafe {
+						return true
+					}
+
+					if nextTileOwner.Location == nextTile {
+						nextTileOwner.isDead = true
+						player.isDead = true
+						player.Kills += 1
+						nextTileOwner.Kills += 1
+
+						gm.PlayerManager.SunsetPlayersChannel <- nextTileOwner
+						gm.PlayerManager.SunsetPlayersChannel <- player
+						return true
+					}
+
+					if nextTile.IsTail {
+						nextTileOwner.isDead = true
+						gm.PlayerManager.SunsetPlayersChannel <- nextTileOwner
+
+						player.Kills += 1
+						nextTile.OwnerColor = player.Color
+						nextTile.IsTail = true
+						player.Tail.tailLock.Lock()
+						player.Tail.tailTiles = append(player.Tail.tailTiles, nextTile)
+						player.Tail.tailLock.Unlock()
+
+						player.Location = nextTile
+
+						return true
+					}
+
+				}
+
+				if nextTile.OwnerColor == player.Color && len(player.Tail.tailTiles) > 0 {
+					select {
+					case gm.SpaceFillerService.SpaceFillerChan <- player:
+						// Successfully sent direction
+					default:
+						gm.SpaceFillerService = getNewSpaceFiller(gm.GameMap)
+						log.Printf("space fill channel is full")
+					}
 
 					player.Location = nextTile
-
+					player.isSafe = true
 					return true
 				}
 
-			}
-
-			if nextTile.OwnerColor == player.Color && len(player.Tail.tailTiles) > 0 {
-				select {
-				case gm.SpaceFillerService.SpaceFillerChan <- player:
-					// Successfully sent direction
-				default:
-					gm.SpaceFillerService = getNewSpaceFiller(gm.GameMap)
-					log.Printf("space fill channel is full")
+				if nextTile.OwnerColor != player.Color {
+					nextTile.OwnerColor = player.Color
+					nextTile.IsTail = true
+					nextTile.Direction = player.CurrentDirection
+					player.Tail.tailLock.Lock()
+					player.Tail.tailTiles = append(player.Tail.tailTiles, nextTile)
+					player.Tail.tailLock.Unlock()
 				}
 
 				player.Location = nextTile
-				player.isSafe = true
-				return true
 			}
-
-			if nextTile.OwnerColor != player.Color {
-				nextTile.OwnerColor = player.Color
-				nextTile.IsTail = true
-				nextTile.Direction = player.CurrentDirection
-				player.Tail.tailLock.Lock()
-				player.Tail.tailTiles = append(player.Tail.tailTiles, nextTile)
-				player.Tail.tailLock.Unlock()
-			}
-
-			player.Location = nextTile
 
 			if player.BotStrategy != nil {
 				gm.BotStrategyWg.Add(1)

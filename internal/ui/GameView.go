@@ -113,6 +113,8 @@ func (m GameViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			engineCommand = game.Direction{Dx: -1, Dy: 0, PlayerColor: *currentPlayer.Color}
 		case "d", "right":
 			engineCommand = game.Direction{Dx: 1, Dy: 0, PlayerColor: *currentPlayer.Color}
+		case " ":
+			currentPlayer.ResetSpeed()
 		default:
 			return m, nil
 		}
@@ -385,9 +387,11 @@ func (m GameViewModel) renderStatusPanel(currentPlayer *game.Player, width int, 
 	// (This section remains unchanged from your original code)
 	statusContent.WriteString(lipgloss.NewStyle().Bold(true).Render("--- Player Stats ---\n"))
 	claimedLand := currentPlayer.GetConsolidateTiles()
+	statusContent.WriteString(fmt.Sprintf("Direction: %c\n", headRunes[game.Direction{Dx: currentPlayer.CurrentDirection.Dx, Dy: currentPlayer.CurrentDirection.Dy}]))
+	statusContent.WriteString(fmt.Sprintf("Speed: %d \n", currentPlayer.Speed))
+
 	statusContent.WriteString(fmt.Sprintf("Kills: %d\n", currentPlayer.Kills))
 	statusContent.WriteString(fmt.Sprintf("Claimed: %.2f %% of land\n", claimedLand*100/float64(game.MapColCount*game.MapColCount)))
-	statusContent.WriteString(fmt.Sprintf("Direction: %c\n", headRunes[game.Direction{Dx: currentPlayer.CurrentDirection.Dx, Dy: currentPlayer.CurrentDirection.Dy}]))
 	statusContent.WriteString("\n")
 
 	botCount := 0
