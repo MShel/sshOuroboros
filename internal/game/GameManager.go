@@ -13,8 +13,9 @@ import (
 )
 
 type Direction struct {
-	Dx, Dy      int
-	PlayerColor int
+	Dx          int `json:"dx"`
+	Dy          int `json:"dy"`
+	PlayerColor int `json:"playerColor"`
 }
 
 type GameTickMsg struct{}
@@ -222,10 +223,22 @@ func (gm *GameManager) processGameTick() {
 			}
 
 			if player.BotStrategy != nil {
+			if nextTile.OwnerColor != player.Color {
+				nextTile.OwnerColor = player.Color
+				nextTile.IsTail = true
+				nextTile.Direction = player.CurrentDirection
+				player.Tail.tailLock.Lock()
+				player.Tail.tailTiles = append(player.Tail.tailTiles, nextTile)
+				player.Tail.tailLock.Unlock()
+			}
+
+			player.Location = nextTile
+
+			if player.StrategyName != "" {
 				gm.BotStrategyWg.Add(1)
 				go func() {
 					defer gm.BotStrategyWg.Done()
-					nextDirection := player.BotStrategy.getNextBestDirection(player, gm)
+					_, nextDirection := getBotsNextDirection(player)
 					player.CurrentDirection = nextDirection
 				}()
 			}
@@ -308,7 +321,9 @@ func (gm *GameManager) intializeBotControledPlayers(botCount int) {
 		}
 
 		botPlayer := CreateNewPlayer(nil, funnyBotNames[botId], botId, gm.getSpawnTile())
-		botPlayer.BotStrategy = defaultStrategy
+		// TODO pull from db in a fashion that allows equal distribution of bot strategies
+
+		botPlayer.StrategyName = "derpyName"
 		gm.Players.Store(botId, botPlayer)
 	}
 }

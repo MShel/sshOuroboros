@@ -116,7 +116,7 @@ func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	colorOptions := []string{}
 	m.gameManager.Players.Range(func(key, value interface{}) bool {
 		if player, ok := value.(*game.Player); ok && player != nil {
-			if player.BotStrategy != nil {
+			if player.StrategyName != "" {
 				colorOptions = append(colorOptions, strconv.Itoa(*player.Color))
 			}
 		}

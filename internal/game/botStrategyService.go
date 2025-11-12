@@ -2,6 +2,7 @@ package game
 
 import (
 	"errors"
+	"fmt"
 
 	lua "github.com/yuin/gopher-lua"
 )
@@ -15,7 +16,7 @@ func getBotStrategy(name string) *BotStrategy {
 	return &BotStrategy{
 		StrategyName: "MoveNorth",
 		StrategyDefinition: `
-			function getNextDirection(playerHead, mapAroundHead)
+			function getNextDirection()
 				return {Dy=0, Dx=-1}
 			end
 		`,
@@ -34,17 +35,26 @@ func getBotsNextDirection(botPlayer *Player) (error, Direction) {
 		return errors.New("could not parse lua strategy definition"), Direction{}
 	}
 
-	luaState.GetGlobal("getNextDirection")
-	// TODO add player info to table
-	luaState.Push(&lua.LTable{})
-	if err := luaState.PCall(1, 1, nil); err != nil {
-		return errors.New("could not execute lua strategy definition"), Direction{}
+	luaFunctionUncasted := luaState.GetGlobal("getNextDirection")
+	luaFunction, ok := luaFunctionUncasted.(*lua.LFunction)
+	if !ok {
+		return fmt.Errorf("lua return value was type %s, function", luaFunction.Type().String()), Direction{}
 	}
 
+	luaState.Push(luaFunction)
+
+	if err := luaState.PCall(0, 1, nil); err != nil {
+		return fmt.Errorf("could not execute lua strategy definition: %w", err), Direction{}
+	}
+
+	if luaState.GetTop() < 1 {
+		return errors.New("Lua function executed but did not return any value."), Direction{}
+	}
 	luaReturn := luaState.Get(-1)
-	luaTable, ok := luaState.Get(-1).(*lua.LTable)
+
+	luaTable, ok := luaReturn.(*lua.LTable)
 	if !ok {
-		return errors.New("Error: Lua return value was type" + luaReturn.Type().String() + ", expected table.\n"), Direction{}
+		return fmt.Errorf("Lua return value was type %s, expected table", luaReturn.Type().String()), Direction{}
 	}
 
 	ret := convertLuaDirectionTableToGoStruct(luaTable)
