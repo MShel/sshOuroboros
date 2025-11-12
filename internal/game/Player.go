@@ -34,6 +34,7 @@ type Player struct {
 	ticksSkippedCount int //this is used if speed is below 0
 	Tail              Tail
 	AllTiles          AllTiles
+	StrategyName      string
 }
 
 func CreateNewPlayer(sshSession ssh.Session, name string, color int, spawnPoint *Tile) *Player {

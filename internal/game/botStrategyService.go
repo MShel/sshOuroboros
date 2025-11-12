@@ -8,17 +8,15 @@ import (
 
 type BotStrategy struct {
 	StrategyName       string
-	StrategyHeadIcon   string
 	StrategyDefinition string
 }
 
 func getBotStrategy(name string) *BotStrategy {
 	return &BotStrategy{
-		StrategyName:     "MoveNorth",
-		StrategyHeadIcon: "↟",
+		StrategyName: "MoveNorth",
 		StrategyDefinition: `
-			function getNextDirection(player)
-				return {Y=0, x=-1}
+			function getNextDirection(playerHead, mapAroundHead)
+				return {Dy=0, Dx=-1}
 			end
 		`,
 	}
@@ -66,13 +64,22 @@ func convertLuaDirectionTableToGoStruct(luaTbl *lua.LTable) Direction {
 		keyStr := lua.LVAsString(key)
 
 		switch keyStr {
-		case "Y":
+		case "Dy":
 			result.Dy = int(lua.LVAsNumber(value))
-		case "X":
+		case "Dx":
 			result.Dx = int(lua.LVAsNumber(value))
 		default:
 			// Optionally ignore or log unknown keys
 		}
 	})
 	return result
+}
+
+func getMapAroundHead(player *Player, gm *GameManager) [][]Tile {
+	topRow := player.Location.X - TileRowCountForBotStrategy/2
+	topCol := player.Location.Y - TileColCountForBotStrategy/2
+	bottomRow := player.Location.X + TileRowCountForBotStrategy/2
+	bottomCol := player.Location.Y + TileColCountForBotStrategy/2
+
+	return gm.GetMapCopy(topRow, bottomRow, topCol, bottomCol)
 }
