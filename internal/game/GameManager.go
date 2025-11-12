@@ -136,16 +136,6 @@ func (gm *GameManager) processGameTick() {
 				return true
 			}
 
-			if player.Speed < 0 {
-				if player.ticksSkippedCount < player.Speed*-1 {
-					// we are skipping this tick because we are slow
-					player.ticksSkippedCount += 1
-					return true
-				}
-
-				player.ticksSkippedCount = 0
-			}
-
 			nextTiles := player.GetNextTiles()
 			for _, nextTile := range nextTiles {
 				if IsWall(nextTile.Y, nextTile.X) {
@@ -220,27 +210,15 @@ func (gm *GameManager) processGameTick() {
 				}
 
 				player.Location = nextTile
-			}
 
-			if player.BotStrategy != nil {
-			if nextTile.OwnerColor != player.Color {
-				nextTile.OwnerColor = player.Color
-				nextTile.IsTail = true
-				nextTile.Direction = player.CurrentDirection
-				player.Tail.tailLock.Lock()
-				player.Tail.tailTiles = append(player.Tail.tailTiles, nextTile)
-				player.Tail.tailLock.Unlock()
-			}
-
-			player.Location = nextTile
-
-			if player.StrategyName != "" {
-				gm.BotStrategyWg.Add(1)
-				go func() {
-					defer gm.BotStrategyWg.Done()
-					_, nextDirection := getBotsNextDirection(player)
-					player.CurrentDirection = nextDirection
-				}()
+				if player.StrategyName != "" {
+					gm.BotStrategyWg.Add(1)
+					go func() {
+						defer gm.BotStrategyWg.Done()
+						_, nextDirection := getBotsNextDirection(player)
+						player.CurrentDirection = nextDirection
+					}()
+				}
 			}
 		}
 		return true
