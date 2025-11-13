@@ -215,7 +215,7 @@ func (gm *GameManager) processGameTick() {
 					gm.BotStrategyWg.Add(1)
 					go func() {
 						defer gm.BotStrategyWg.Done()
-						_, nextDirection := getBotsNextDirection(player)
+						nextDirection, _ := getBotsNextDirection(player, gm)
 						player.CurrentDirection = nextDirection
 					}()
 				}
