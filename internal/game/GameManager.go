@@ -145,16 +145,17 @@ func (gm *GameManager) processGameTick() {
 				}
 
 				player.isSafe = false
+				nextTile.Direction = player.CurrentDirection
 
 				if nextTile.OwnerColor != nil && nextTile.OwnerColor != player.Color {
 					nextTileOwnerAny, _ := gm.Players.Load(*nextTile.OwnerColor)
 					if nextTileOwnerAny == nil {
-						return true
+						continue
 					}
 
 					nextTileOwner := nextTileOwnerAny.(*Player)
 					if nextTileOwner.isDead || nextTileOwner.isSafe {
-						return true
+						continue
 					}
 
 					if nextTileOwner.Location == nextTile {
@@ -181,7 +182,7 @@ func (gm *GameManager) processGameTick() {
 
 						player.Location = nextTile
 
-						return true
+						continue
 					}
 
 				}
@@ -197,7 +198,7 @@ func (gm *GameManager) processGameTick() {
 
 					player.Location = nextTile
 					player.isSafe = true
-					return true
+					continue
 				}
 
 				if nextTile.OwnerColor != player.Color {
@@ -208,8 +209,9 @@ func (gm *GameManager) processGameTick() {
 					player.Tail.tailTiles = append(player.Tail.tailTiles, nextTile)
 					player.Tail.tailLock.Unlock()
 				}
-
+				player.Location.IsHead = false
 				player.Location = nextTile
+				nextTile.IsHead = true
 
 				if player.StrategyName != "" {
 					gm.BotStrategyWg.Add(1)
@@ -299,8 +301,6 @@ func (gm *GameManager) intializeBotControledPlayers(botCount int) {
 		}
 
 		botPlayer := CreateNewPlayer(nil, funnyBotNames[botId], botId, gm.getSpawnTile())
-		// TODO pull from db in a fashion that allows equal distribution of bot strategies
-
 		botPlayer.StrategyName = "derpyName"
 		gm.Players.Store(botId, botPlayer)
 	}

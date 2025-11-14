@@ -17,58 +17,78 @@ func getBotStrategy(name string) *BotStrategy {
 		StrategyName: "MoveNorth",
 		StrategyDefinition: `
 local function abs(n) return (n < 0) and -n or n end
+local function is_safe(tile, head_color)
+    -- A move is safe if the tile is NIL (empty) or is our OWN Tail
+    return tile.OwnerColor == nil or (tile.IsTail and tile.OwnerColor == head_color)
+end
 
 function getNextDirection(aroundPlayerHead)
-    -- The map is always centered on the snake's head.
-    -- Assuming the map is N x N, the center index is (N+1)/2 (Lua is 1-indexed).
     local size = #aroundPlayerHead
-    local center = math.floor((size + 1) / 2)
-    local head_y = center
-    local head_x = center
-
-    local tail_dy, tail_dx = 0, 0
+    -- Assuming a square map, the center index is size/2 + 0.5 (for odd sizes)
+    local center_idx = math.floor((size + 1) / 2)
+    local headTile = aroundPlayerHead[center_idx][center_idx]
     
-    -- 1. Find the tail's location and calculate direction from head to tail
-    for y = 1, size do
-        for x = 1, #aroundPlayerHead[y] do
-            local tile = aroundPlayerHead[y][x]
-            if tile.IsTail then
-                tail_dy = y - head_y -- Relative movement in Y (row)
-                tail_dx = x - head_x -- Relative movement in X (column)
-                break
-            end
-        end
-        if tail_dy ~= 0 or tail_dx ~= 0 then break end
-    end
-
-    -- 2. Check for adjacency (Manhattan distance of 1: Up, Down, Left, or Right)
-    if (abs(tail_dy) + abs(tail_dx) == 1) then
-        -- This implements the "close the loop" move.
-        -- We move directly into the adjacent tail tile.
-        return {Dy=tail_dy, Dx=tail_dx}
-    end
-
-    -- 3. Default Strategy: Try to continue straight.
-    local headTile = aroundPlayerHead[head_y][head_x]
     local current_dy = headTile.Direction.Dy
     local current_dx = headTile.Direction.Dx
-    
-    if current_dy ~= 0 or current_dx ~= 0 then
-        local next_y = head_y + current_dy
-        local next_x = head_x + current_dx
+    local head_color = headTile.OwnerColor
 
-        -- Check if the move is within the local map bounds
+    -- Define movement priority for Square-Making: Straight -> Right Turn -> Left Turn
+    local preferredDirections = {
+        -- 1. Straight (Continue current side)
+        {Dy=current_dy, Dx=current_dx},
+        -- 2. Right Turn (Change to next side of the square: (Dx, Dy) -> (-Dy, Dx))
+        {Dy=-current_dx, Dx=current_dy}, 
+        -- 3. Left Turn (Fallback turn)
+        {Dy=current_dx, Dx=-current_dy}, 
+    }
+    
+    -- 1. HIGHEST PRIORITY: CLOSE THE LOOP (Adjacent Tail)
+    -- Check all 4 cardinal directions for an adjacent own tail tile
+    local cardinalDirections = {
+        {Dy=-1, Dx=0}, {Dy=1, Dx=0}, {Dy=0, Dx=1}, {Dy=0, Dx=-1}
+    }
+
+    for _, dir in ipairs(cardinalDirections) do
+        local next_y = center_idx + dir.Dy
+        local next_x = center_idx + dir.Dx
+        
+        -- Boundary check (must be within the small local map)
         if next_y >= 1 and next_y <= size and next_x >= 1 and next_x <= #aroundPlayerHead[next_y] then
             local nextTile = aroundPlayerHead[next_y][next_x]
-            -- Move straight if the next tile is empty (OwnerColor == nil) or is the tail (already handled, but safe to check)
-            if nextTile.OwnerColor == nil or nextTile.IsTail then
-                return {Dy=current_dy, Dx=current_dx}
+            
+            -- Check if this move is a loop-closer AND not a 180-degree turn
+            if nextTile.IsTail and nextTile.OwnerColor == head_color then
+                -- This is the highest priority move
+                return dir
             end
         end
     end
 
-    -- 4. Fallback: If no other move is safe, try moving North (Dy=-1)
-    return {Dy=-1, Dx=0}
+    -- 2. FOLLOW SQUARE PATH (Straight -> Right Turn)
+    for _, dir in ipairs(preferredDirections) do
+        local next_y = center_idx + dir.Dy
+        local next_x = center_idx + dir.Dx
+        
+        -- CRITICAL: Check for 180-degree turn
+        if dir.Dy == -current_dy and dir.Dx == -current_dx then
+            goto continue
+        end
+
+        -- Check map bounds
+        if next_y >= 1 and next_y <= size and next_x >= 1 and next_x <= #aroundPlayerHead[next_y] then
+            local nextTile = aroundPlayerHead[next_y][next_x]
+            
+            -- If the move is safe (Empty or Own Tail)
+            if is_safe(nextTile, head_color) then
+                return dir
+            end
+        end
+        
+        ::continue::
+    end
+
+    -- 3. FINAL FALLBACK: Return current direction 
+    return {Dy=current_dy, Dx=current_dx} 
 end
 		`,
 	}
@@ -93,6 +113,10 @@ func getBotsNextDirection(botPlayer *Player, gm *GameManager) (Direction, error)
 	}
 
 	aroundPlayersHeadMap := getMapAroundHead(botPlayer, gm)
+
+	fmt.Printf("\n %v\n", aroundPlayersHeadMap)
+	//panic("derp")
+
 	luaState.Push(luaFunction)
 
 	luaState.Push(convertGoMapToLuaTable(luaState, aroundPlayersHeadMap))
@@ -112,7 +136,7 @@ func getBotsNextDirection(botPlayer *Player, gm *GameManager) (Direction, error)
 	}
 
 	ret := convertLuaDirectionTableToGoStruct(luaTable)
-
+	fmt.Printf("%v", ret)
 	luaState.Pop(1)
 	return ret, nil
 }
@@ -138,10 +162,11 @@ func convertLuaDirectionTableToGoStruct(luaTbl *lua.LTable) Direction {
 }
 
 func getMapAroundHead(player *Player, gm *GameManager) [][]Tile {
-	topRow := player.Location.X - TileRowCountForBotStrategy/2
-	topCol := player.Location.Y - TileColCountForBotStrategy/2
-	bottomRow := player.Location.X + TileRowCountForBotStrategy/2
-	bottomCol := player.Location.Y + TileColCountForBotStrategy/2
+	topRow := player.Location.Y - TileRowCountForBotStrategy/2
+	bottomRow := player.Location.Y + TileRowCountForBotStrategy/2
+
+	topCol := player.Location.X - TileColCountForBotStrategy/2
+	bottomCol := player.Location.X + TileColCountForBotStrategy/2
 
 	return gm.GetMapCopy(topRow, bottomRow, topCol, bottomCol)
 }
