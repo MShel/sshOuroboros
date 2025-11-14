@@ -1,11 +1,12 @@
 package game
 
 type Tile struct {
-	OwnerColor *int
-	IsTail     bool
-	X          int
-	Y          int
-	Direction  Direction
+	OwnerColor *int      `json:"OwnerColor"`
+	IsHead     bool      `json:"isHead"`
+	IsTail     bool      `json:"isTail"`
+	X          int       `json:"x"`
+	Y          int       `json:"y"`
+	Direction  Direction `json:"direction"`
 }
 
 func CreateNewTile(row int, col int) *Tile {

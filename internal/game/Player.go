@@ -34,24 +34,28 @@ type Player struct {
 	ticksSkippedCount int //this is used if speed is below 0
 	Tail              Tail
 	AllTiles          AllTiles
+	StrategyName      string
 }
 
 func CreateNewPlayer(sshSession ssh.Session, name string, color int, spawnPoint *Tile) *Player {
 	spawnPoint.OwnerColor = &color
 	spawnPoint.IsTail = true
+	spawnPoint.IsHead = true
 	possibleDirections := []Direction{
 		{Dx: 1, Dy: 0},
 		{Dx: 0, Dy: 1},
 		{Dx: -1, Dy: 0},
 		{Dx: 0, Dy: -1},
 	}
+	currDirection := possibleDirections[rand.Intn(len(possibleDirections))]
+	spawnPoint.Direction = currDirection
 
 	return &Player{
 		Name:             name,
 		Color:            &color,
 		SshSession:       sshSession,
 		Location:         spawnPoint,
-		CurrentDirection: possibleDirections[rand.Intn(len(possibleDirections))],
+		CurrentDirection: currDirection,
 		Tail: Tail{
 			tailTiles: []*Tile{
 				spawnPoint,

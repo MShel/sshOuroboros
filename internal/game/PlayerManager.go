@@ -108,6 +108,7 @@ func (playerManagerInst *PlayerManager) rebirthPlayersWorker() {
 				playerManagerInst.GameManager.getSpawnTile())
 
 			botPlayer.BotStrategy = defaultStrategy
+			botPlayer.StrategyName = "herpety derpety"
 			playerManagerInst.GameManager.Players.Store(playerColorInt, botPlayer)
 		}
 	}

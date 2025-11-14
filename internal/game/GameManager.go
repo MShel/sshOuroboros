@@ -13,8 +13,9 @@ import (
 )
 
 type Direction struct {
-	Dx, Dy      int
-	PlayerColor int
+	Dx          int `json:"dx"`
+	Dy          int `json:"dy"`
+	PlayerColor int `json:"playerColor"`
 }
 
 type GameTickMsg struct{}
@@ -135,16 +136,6 @@ func (gm *GameManager) processGameTick() {
 				return true
 			}
 
-			if player.Speed < 0 {
-				if player.ticksSkippedCount < player.Speed*-1 {
-					// we are skipping this tick because we are slow
-					player.ticksSkippedCount += 1
-					return true
-				}
-
-				player.ticksSkippedCount = 0
-			}
-
 			nextTiles := player.GetNextTiles()
 			for _, nextTile := range nextTiles {
 				if IsWall(nextTile.Y, nextTile.X) {
@@ -154,16 +145,17 @@ func (gm *GameManager) processGameTick() {
 				}
 
 				player.isSafe = false
+				nextTile.Direction = player.CurrentDirection
 
 				if nextTile.OwnerColor != nil && nextTile.OwnerColor != player.Color {
 					nextTileOwnerAny, _ := gm.Players.Load(*nextTile.OwnerColor)
 					if nextTileOwnerAny == nil {
-						return true
+						continue
 					}
 
 					nextTileOwner := nextTileOwnerAny.(*Player)
 					if nextTileOwner.isDead || nextTileOwner.isSafe {
-						return true
+						continue
 					}
 
 					if nextTileOwner.Location == nextTile {
@@ -190,7 +182,7 @@ func (gm *GameManager) processGameTick() {
 
 						player.Location = nextTile
 
-						return true
+						continue
 					}
 
 				}
@@ -206,7 +198,7 @@ func (gm *GameManager) processGameTick() {
 
 					player.Location = nextTile
 					player.isSafe = true
-					return true
+					continue
 				}
 
 				if nextTile.OwnerColor != player.Color {
@@ -217,17 +209,18 @@ func (gm *GameManager) processGameTick() {
 					player.Tail.tailTiles = append(player.Tail.tailTiles, nextTile)
 					player.Tail.tailLock.Unlock()
 				}
-
+				player.Location.IsHead = false
 				player.Location = nextTile
-			}
+				nextTile.IsHead = true
 
-			if player.BotStrategy != nil {
-				gm.BotStrategyWg.Add(1)
-				go func() {
-					defer gm.BotStrategyWg.Done()
-					nextDirection := player.BotStrategy.getNextBestDirection(player, gm)
-					player.CurrentDirection = nextDirection
-				}()
+				if player.StrategyName != "" {
+					gm.BotStrategyWg.Add(1)
+					go func() {
+						defer gm.BotStrategyWg.Done()
+						nextDirection, _ := getBotsNextDirection(player, gm)
+						player.CurrentDirection = nextDirection
+					}()
+				}
 			}
 		}
 		return true
@@ -308,7 +301,7 @@ func (gm *GameManager) intializeBotControledPlayers(botCount int) {
 		}
 
 		botPlayer := CreateNewPlayer(nil, funnyBotNames[botId], botId, gm.getSpawnTile())
-		botPlayer.BotStrategy = defaultStrategy
+		botPlayer.StrategyName = "derpyName"
 		gm.Players.Store(botId, botPlayer)
 	}
 }
