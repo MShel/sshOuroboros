@@ -158,14 +158,15 @@ func (gm *GameManager) processGameTick() {
 				if nextTile.OwnerColor != nil && nextTile.OwnerColor != player.Color {
 					nextTileOwnerAny, _ := gm.Players.Load(*nextTile.OwnerColor)
 					if nextTileOwnerAny == nil {
-						return true
+						continue
 					}
 
 					nextTileOwner := nextTileOwnerAny.(*Player)
 					if nextTileOwner.isDead || nextTileOwner.isSafe {
-						return true
+						continue
 					}
 
+					// head to head collision
 					if nextTileOwner.Location == nextTile {
 						nextTileOwner.isDead = true
 						player.isDead = true
@@ -177,6 +178,7 @@ func (gm *GameManager) processGameTick() {
 						return true
 					}
 
+					// I'm a killer
 					if nextTile.IsTail {
 						nextTileOwner.isDead = true
 						gm.PlayerManager.SunsetPlayersChannel <- nextTileOwner
@@ -189,8 +191,7 @@ func (gm *GameManager) processGameTick() {
 						player.Tail.tailLock.Unlock()
 
 						player.Location = nextTile
-
-						return true
+						continue
 					}
 
 				}
@@ -198,8 +199,8 @@ func (gm *GameManager) processGameTick() {
 				if nextTile.OwnerColor == player.Color && len(player.Tail.tailTiles) > 0 {
 					select {
 					case gm.SpaceFillerService.SpaceFillerChan <- player:
-						// Successfully sent direction
 					default:
+						// this is a derpy hack to account for random issue where all spacefillers are dead
 						gm.SpaceFillerService = getNewSpaceFiller(gm.GameMap)
 						log.Printf("space fill channel is full")
 					}
